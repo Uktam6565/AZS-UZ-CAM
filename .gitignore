@@ -1,22 +1,33 @@
 # Python
-backend/.venv/
-backend/__pycache__/
-backend/**/*.pyc
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+*.log
 
-# Node / build (на будущее)
+# Project virtualenv inside repo
+gasq/backend/.venv/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Node / frontend
 node_modules/
+dist/
+build/
+gasq/frontend/node_modules/
+gasq/frontend/dist/
+gasq/frontend/build/
 
-# Frontend cache
-frontend/.cache/
-frontend/dist/
+# Local backups/artifacts
+backups/
+gasq/backups/
+*.zip
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Env
-.env
-.env.*
-
-# Logs
-*.log

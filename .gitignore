@@ -35,3 +35,6 @@ Thumbs.db
 # ENV files
 .env
 **/.env
+
+PROJECT_STATE.md
+PROJECT_STATE.md/

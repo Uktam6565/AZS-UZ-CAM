@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Driver</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <script defer src="/pwa-install.js"></script>
+
+  <!-- Leaflet (локально, без CDN) -->
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <script defer src="/vendor/leaflet/leaflet.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#101a2e;
+      --text:#e8edf7;
+      --muted:#a7b2c6;
+      --line:rgba(255,255,255,0.08);
+      --good:#20c997;
+      --warn:#f59f00;
+      --bad:#ff6b6b;
+      --btn:#1b2a4a;
+      --btn2:#22345c;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius:16px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family:var(--font);
+      background: radial-gradient(1000px 700px at 30% 20%, #1a2a52 0%, var(--bg) 55%, #060b14 100%);
+      color:var(--text);
+    }
+    .wrap{ max-width: 1040px; margin: 0 auto; padding: 20px 16px 32px; }
+    .topbar{
+      display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+      margin-bottom: 14px;
+    }
+    .title{ display:flex; flex-direction:column; gap:4px; }
+    .title h1{ margin:0; font-size: 24px; letter-spacing:0.2px; }
+    .title .sub{ color: var(--muted); font-size: 13px; }
+
+    .right{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; align-items:center; }
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding: 8px 10px; border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      font-size: 13px; color: var(--muted);
+      max-width:100%;
+    }
+    .pill strong{ color: var(--text); font-weight:900; }
+    .dot{ width:10px; height:10px; border-radius:50%; background: rgba(255,255,255,0.2); }
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 980px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    label{
+      display:flex; flex-direction:column; gap:6px;
+      font-size: 13px; color: var(--muted);
+      margin-bottom: 10px;
+    }
+    input, select{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline:none;
+      font-size: 15px;
+    }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--btn2), var(--btn));
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 14px;
+      cursor:pointer;
+      font-weight: 800;
+      font-size: 15px;
+      transition: transform .05s ease, opacity .1s ease;
+      min-width: 160px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .btn.small{ min-width: unset; padding: 10px 12px; border-radius: 12px; font-size: 14px; }
+    .btn.good{ background: linear-gradient(180deg, rgba(32,201,151,0.25), rgba(32,201,151,0.10)); border-color: rgba(32,201,151,0.35); }
+    .btn.warn{ background: linear-gradient(180deg, rgba(245,159,0,0.26), rgba(245,159,0,0.10)); border-color: rgba(245,159,0,0.35); }
+    .btn.bad { background: linear-gradient(180deg, rgba(255,107,107,0.25), rgba(255,107,107,0.10)); border-color: rgba(255,107,107,0.35); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-top: 8px; }
+    .big{
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.22);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .big .no{
+      font-size: 42px; font-weight: 900;
+      letter-spacing: 1px; line-height: 1;
+      word-break: break-word;
+      margin-top: 8px;
+    }
+    .muted{ color: var(--muted); }
+
+    /* Map */
+    #map{
+      width:100%;
+      height: 340px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      overflow:hidden;
+      background: rgba(0,0,0,0.2);
+    }
+
+    #qrCanvas{
+      display:block;
+      background:#fff;
+      padding:10px;
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,0.08);
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .toast{
+      position: fixed; right: 16px; bottom: 16px;
+      max-width: 560px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(10,16,30,0.92);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      display:none;
+      font-size: 14px;
+      line-height:1.3;
+      z-index: 50;
+    }
+    .toast.show{ display:block; }
+    .toast .t{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>🚗 GasQ — <span data-i18n="driver_title">Водитель</span></h1>
+        <div class="sub">MVP: выбрать АЗС → выбрать топливо → получить талон → ждать вызова</div>
+      </div>
+
+      <div class="right">
+        <div id="installBox"></div>
+
+        <select id="langSelect" class="btn small" style="min-width:unset;">
+          <option value="ru">RU</option>
+          <option value="uz">UZ</option>
+          <option value="en">EN</option>
+        </select>
+
+        <a class="pill" href="/terminal/index.html" style="text-decoration:none;">
+          <span class="dot warn"></span>
+          <span>Табло</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- 1) MAP -->
+    <div class="card">
+      <h2 style="margin:0 0 10px; font-size:18px;">🗺️ Выбор АЗС на карте</h2>
+      <div class="muted" style="margin-bottom:10px;">
+        Нажми на маркер, чтобы выбрать АЗС — Station ID заполнится автоматически.
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- 2) FORM + 3) TICKET -->
+    <div class="grid">
+      <div class="card">
+        <h2 style="margin:0 0 10px; font-size:18px;">🎫 <span data-i18n="get_ticket">Получить талон</span></h2>
+
+        <label>
+          API
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </label>
+
+        <label>
+          Station ID (выбирается на карте)
+          <input id="stationId" type="number" min="1" value="1" />
+        </label>
+
+        <label>
+          Топливо
+          <select id="fuelType">
+            <option value="gasoline">gasoline</option>
+            <option value="diesel">diesel</option>
+            <option value="lpg">lpg</option>
+            <option value="ev">ev</option>
+          </select>
+        </label>
+
+        <label>
+          Телефон (необязательно)
+          <input id="driverPhone" type="text" placeholder="+998..." />
+        </label>
+
+        <div class="row">
+          <div class="right">
+            <button id="btnJoin" class="btn small warn" onclick="joinQueue()" data-i18n="get_ticket">Получить талон</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="pill">
+            <span class="dot good"></span>
+            <span>Подсказка: талон сохранится в браузере</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 10px; font-size:18px;">📍 <span data-i18n="my_ticket">Мой талон</span></h2>
+
+        <div class="big">
+          <div class="pill" id="statusPill">
+            <span class="dot" id="statusDot"></span>
+            <span><span data-i18n="status">Статус</span>: <strong id="ticketStatus">—</strong></span>
+          </div>
+
+          <div class="no" id="ticketNo">—</div>
+
+          <div class="muted" style="margin-top:10px">
+            ticket_id: <span id="ticketId">—</span>
+          </div>
+
+          <div class="muted" style="margin-top:6px">
+            created: <span id="createdAt">—</span><br/>
+            called: <span id="calledAt">—</span><br/>
+            done: <span id="doneAt">—</span>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="muted" style="margin-bottom:6px">QR / claim</div>
+
+            <canvas id="qrCanvas"></canvas>
+
+            <div class="muted" style="margin-top:10px">
+              claim: <b id="claimText">—</b>
+              <button class="btn small" style="margin-left:8px" onclick="copyClaim()">Copy</button>
+            </div>
+
+            <div class="muted" style="margin-top:6px">
+              Формат: ticket_no|claim_code|station_id
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <div class="right">
+              <button id="btnRefresh" class="btn small" onclick="refreshTicket()" data-i18n="refresh">Обновить</button>
+              <button id="btnReset" class="btn small bad" onclick="resetLocalTicket()" data-i18n="reset">Сбросить</button>
+            </div>
+          </div>
+
+          <div class="muted" style="margin-top:10px">
+            Как только статус станет <b>called</b> — подъезжай к колонке.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- App scripts -->
+  <script src="/i18n.js"></script>
+  <script src="/qr.js"></script>
+  <script src="/driver/map.js"></script>
+
+  <script>
+    // Service Worker (один раз, без дублей)
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js").catch(console.error);
+      });
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    const LS_TICKET_ID = "gasq_driver_ticket_id";
+    const LS_CLAIM = "gasq_driver_claim_code";
+
+    let pollingTimer = null;
+    let joinLoading = false;
+    let refreshLoading = false;
+
+    function toast(msg, hint=""){
+      const el = $("toast");
+      el.innerHTML = `<div>${msg}</div>${hint ? `<div class="t">${hint}</div>` : ""}`;
+      el.classList.add("show");
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(()=>el.classList.remove("show"), 3800);
+    }
+    window.toast = toast;
+
+    function apiBase(){
+      return ($("apiBase").value || "").trim().replace(/\/+$/, "");
+    }
+
+    function isoToLocal(iso){
+      if(!iso) return "—";
+      try{ return new Date(iso).toLocaleString(); }catch(e){ return iso; }
+    }
+
+    async function api(path, opts={}){
+      const res = await fetch(apiBase() + path, opts);
+      if(!res.ok){
+        let txt = "";
+        try{ txt = await res.text(); }catch(e){}
+        throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+      }
+      return res.json();
+    }
+
+    function getSavedTicketId(){
+      const v = localStorage.getItem(LS_TICKET_ID);
+      const n = Number(v || 0);
+      return n > 0 ? n : null;
+    }
+    function saveTicketId(id){ localStorage.setItem(LS_TICKET_ID, String(id)); }
+    function clearTicketId(){ localStorage.removeItem(LS_TICKET_ID); }
+
+    function saveClaim(code){ localStorage.setItem(LS_CLAIM, String(code || "")); }
+    function clearClaim(){ localStorage.removeItem(LS_CLAIM); }
+    function getClaim(){ return localStorage.getItem(LS_CLAIM) || ""; }
+
+    function disableJoin(disabled){ $("btnJoin").disabled = disabled; }
+    function disableRefresh(disabled){ $("btnRefresh").disabled = disabled; }
+
+    function startPolling(){
+      stopPolling();
+      pollingTimer = setInterval(()=>refreshTicket(true), 3000);
+    }
+    function stopPolling(){
+      if(pollingTimer){
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    }
+
+    function trStatus(status){
+      if(!status) return "—";
+      const map = {
+        waiting: (window.I18N ? I18N.t("waiting") : "waiting"),
+        called: (window.I18N ? I18N.t("called") : "called"),
+        fueling: (window.I18N ? I18N.t("fueling") : "fueling"),
+        done: (window.I18N ? I18N.t("done") : "done"),
+        cancelled: (window.I18N ? I18N.t("cancelled") : "cancelled"),
+      };
+      return map[status] || status;
+    }
+
+    function setStatusBadge(status){
+      const dot = $("statusDot");
+      $("ticketStatus").textContent = trStatus(status);
+
+      dot.className = "dot";
+      if(status === "waiting" || status === "called") dot.className = "dot warn";
+      else if(status === "fueling" || status === "done") dot.className = "dot good";
+      else if(status === "cancelled") dot.className = "dot bad";
+    }
+
+    function clearQr(text){
+      const canvas = $("qrCanvas");
+      if(!canvas) return;
+      const size = 240;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0,0,size,size);
+      ctx.fillStyle = "#111";
+      ctx.font = "14px system-ui, Arial";
+      ctx.fillText("QR will appear here", 20, 120);
+      if(text){
+        ctx.font = "12px system-ui, Arial";
+        ctx.fillStyle = "#444";
+        ctx.fillText(text, 20, 145);
+      }
+    }
+
+    function setTicketUIEmpty(){
+      $("ticketNo").textContent = "—";
+      $("ticketId").textContent = "—";
+      $("createdAt").textContent = "—";
+      $("calledAt").textContent = "—";
+      $("doneAt").textContent = "—";
+      $("claimText").textContent = "—";
+      setStatusBadge(null);
+      clearQr("No ticket");
+    }
+
+    function getParams(){
+      const stationId = Number($("stationId").value || 0);
+      const fuelType = ($("fuelType").value || "").trim();
+      const phone = ($("driverPhone").value || "").trim();
+      if(!stationId) throw new Error("Укажи Station ID");
+      if(!fuelType) throw new Error("Выбери топливо");
+      return { stationId, fuelType, phone };
+    }
+
+    async function joinQueue(){
+      if(joinLoading) return;
+      joinLoading = true;
+      disableJoin(true);
+
+      try{
+        const { stationId, fuelType, phone } = getParams();
+        const payload = { station_id: stationId, fuel_type: fuelType, source: "app" };
+        if(phone) payload.driver_phone = phone;
+
+        const data = await api("/api/queue/join", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if(!data || !data.id){
+          toast("Неожиданный ответ /join", JSON.stringify(data || {}));
+          return;
+        }
+
+        saveTicketId(data.id);
+        saveClaim(data.claim_code || "");
+        toast("🎫 Талон создан", `ticket_no=${data.ticket_no || "—"}, id=${data.id}`);
+
+        await refreshTicket(true);
+        startPolling();
+      }catch(err){
+        console.error(err);
+        toast("Не удалось встать в очередь", err.message || "");
+      }finally{
+        joinLoading = false;
+        disableJoin(false);
+      }
+    }
+
+    async function refreshTicket(silent = false) {
+      if (refreshLoading) return;
+      refreshLoading = true;
+      disableRefresh(true);
+
+      try {
+        const ticketId = getSavedTicketId();
+        if (!ticketId) {
+          if (!silent) toast("Нет сохранённого талона");
+          setTicketUIEmpty();
+          return;
+        }
+
+        const claim = getClaim();
+        const qs = claim ? `?claim_code=${encodeURIComponent(claim)}` : "";
+
+        const t = await api(`/api/queue/ticket/${ticketId}${qs}`);
+
+        $("ticketNo").textContent = t.ticket_no || "—";
+        $("ticketId").textContent = t.id;
+        $("createdAt").textContent = isoToLocal(t.created_at);
+        $("calledAt").textContent = isoToLocal(t.called_at);
+        $("doneAt").textContent = isoToLocal(t.done_at);
+        setStatusBadge(t.status);
+
+        const payload = `${t.ticket_no}|${t.claim_code}|${t.station_id}`;
+        $("claimText").textContent = payload;
+
+        const canvas = $("qrCanvas");
+        if (canvas && window.QRCode && typeof QRCode.toCanvas === "function") {
+          QRCode.toCanvas(canvas, payload, { width: 240, margin: 2 });
+        } else {
+          clearQr("qr.js not loaded");
+        }
+      } catch (err) {
+        console.error(err);
+        if (!silent) toast("Ошибка обновления", err.message || "");
+      } finally {
+        refreshLoading = false;
+        disableRefresh(false);
+      }
+    }
+
+    function resetLocalTicket(){
+      stopPolling();
+      clearTicketId();
+      clearClaim();
+      setTicketUIEmpty();
+      toast("Сброшено", "Талон удалён только из браузера");
+    }
+
+    async function copyClaim(){
+      const text = $("claimText")?.textContent || "";
+      try{
+        await navigator.clipboard.writeText(text);
+        toast("✅ Скопировано", text);
+      }catch(e){
+        toast("Не удалось скопировать", "Скопируй руками: " + text);
+      }
+    }
+
+    function setupLang(){
+      const sel = $("langSelect");
+      if(!window.I18N) return;
+      sel.value = I18N.getLang();
+
+      sel.addEventListener("change", () => {
+        I18N.setLang(sel.value);
+        const ticketId = getSavedTicketId();
+        if(ticketId) refreshTicket(true);
+        else setTicketUIEmpty();
+      });
+    }
+
+    // INIT (одна точка входа)
+    window.addEventListener("DOMContentLoaded", function(){
+      setupLang();
+
+      const ticketId = getSavedTicketId();
+      if(ticketId){
+        refreshTicket(true);
+        startPolling();
+      }else{
+        setTicketUIEmpty();
+      }
+
+      // карта — запускаем РОВНО ОДИН РАЗ отсюда
+      if(window.L && typeof window.initMap === "function"){
+        window.initMap();
+      }else{
+        console.warn("[GasQ] Leaflet/initMap not ready yet");
+      }
+    });
+  </script>
+</body>
+</html>

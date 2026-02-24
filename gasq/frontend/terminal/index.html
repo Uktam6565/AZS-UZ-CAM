@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ru" data-i18n-doc-title="terminal_title">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Terminal</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <div id="installBox"></div>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#101a2e;
+      --text:#e8edf7;
+      --muted:#a7b2c6;
+      --line:rgba(255,255,255,0.08);
+      --good:#20c997;
+      --warn:#f59f00;
+      --bad:#ff6b6b;
+      --btn:#1b2a4a;
+      --btn2:#22345c;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius:16px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js").catch(console.error);
+      });
+    }
+  </script>
+
+    body{
+      margin:0;
+      font-family:var(--font);
+      background: radial-gradient(1000px 700px at 30% 20%, #1a2a52 0%, var(--bg) 55%, #060b14 100%);
+      color:var(--text);
+    }
+    .wrap{ max-width: 1100px; margin: 0 auto; padding: 20px 16px 32px; }
+
+    .topbar{
+      display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+      margin-bottom: 14px;
+    }
+    .title{ display:flex; flex-direction:column; gap:4px; }
+    .title h1{ margin:0; font-size: 26px; }
+    .title .sub{ color: var(--muted); font-size: 13px; }
+
+    .right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding: 8px 10px; border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      font-size: 13px; color: var(--muted);
+      max-width:100%;
+      text-decoration:none;
+    }
+    .pill strong{ color: var(--text); font-weight:900; }
+    .dot{ width:10px; height:10px; border-radius:50%; background: rgba(255,255,255,0.2); }
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--btn2), var(--btn));
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight: 800;
+      font-size: 14px;
+      min-width: 120px;
+    }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .controls{
+      display:grid;
+      grid-template-columns: 160px 1fr 160px 1fr;
+      gap:10px;
+      align-items:end;
+    }
+    @media (max-width: 860px){
+      .controls{ grid-template-columns: 1fr 1fr; }
+    }
+
+    label{ display:flex; flex-direction:column; gap:6px; font-size: 13px; color: var(--muted); }
+    input, select{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline:none;
+      font-size: 15px;
+    }
+
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .big{
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.22);
+      border-radius: var(--radius);
+      padding: 14px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .big .no{
+      font-size: 56px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      line-height: 1;
+      word-break: break-word;
+    }
+    .muted{ color: var(--muted); }
+
+    table{
+      width:100%;
+      border-collapse: collapse;
+      overflow:hidden;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.18);
+    }
+    th, td{
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align:left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    th{
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 13px;
+      background: rgba(255,255,255,0.04);
+    }
+    tr:last-child td{ border-bottom:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1 data-i18n="terminal_title">🖥 GasQ — Табло</h1>
+        <div class="sub" data-i18n="terminal_sub">Показывает вызванные талоны</div>
+      </div>
+
+      <div class="right">
+        <select id="langSelect" class="btn" style="min-width:unset;">
+          <option value="ru">RU</option>
+          <option value="uz">UZ</option>
+          <option value="en">EN</option>
+        </select>
+
+        <a class="pill" href="/admin/operator.html">
+          <span class="dot good"></span>
+          <span>Operator</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="controls">
+        <label>
+          <span data-i18n="api">API</span>
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </label>
+
+        <label>
+          <span data-i18n="station_id">Station ID</span>
+          <input id="stationId" type="number" min="1" value="1" />
+        </label>
+
+        <label>
+          <span data-i18n="fuel_filter">Тип топлива (фильтр)</span>
+          <select id="fuelType">
+            <option value="" data-i18n="fuel_all">Все</option>
+            <option value="gasoline">gasoline</option>
+            <option value="diesel">diesel</option>
+            <option value="lpg">lpg</option>
+            <option value="ev">ev</option>
+          </select>
+        </label>
+
+        <label>
+          <span data-i18n="auto_refresh">Автообновление</span>
+          <select id="autoRefresh">
+            <option value="3">3s</option>
+            <option value="5">5s</option>
+            <option value="10">10s</option>
+            <option value="0">off</option>
+          </select>
+        </label>
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
+        <button class="btn" onclick="load()" data-i18n="refresh">Обновить</button>
+
+        <div class="pill">
+          <span class="dot warn"></span>
+          <span><span data-i18n="waiting_count">Ожидают</span>: <strong id="waitingCount">—</strong></span>
+        </div>
+
+        <div class="pill">
+          <span class="dot good"></span>
+          <span><span data-i18n="updated_at">Обновлено</span>: <strong id="updatedAt">—</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2 data-i18n="now_serving">Сейчас обслуживается</h2>
+        <div class="big">
+          <div>
+            <div class="muted"><span data-i18n="called">Вызван</span>: <span id="currentTime">—</span></div>
+            <div class="no" id="currentTicket">—</div>
+          </div>
+          <div class="muted" style="text-align:right;">
+            <div>id: <span id="currentId">—</span></div>
+            <div>fuel: <span id="currentFuel">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="called_list">Вызваны (до 10)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:120px;">Ticket</th>
+              <th style="width:120px;" data-i18n="called">Вызван</th>
+              <th style="width:80px;">id</th>
+            </tr>
+          </thead>
+          <tbody id="calledTbody">
+            <tr><td colspan="3" class="muted" data-i18n="loading">Загрузка…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/i18n.js"></script>
+  <script src="/i18n.js"></script>
+  <script src="/pwa-install.js"></script>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    let autoTimer = null;
+
+    function apiBase(){
+      return ($("apiBase").value || "").trim();
+    }
+
+    function isoToLocal(iso){
+      if(!iso) return I18N.t("none");
+      try{ return new Date(iso).toLocaleString(); }catch(e){ return iso; }
+    }
+
+    async function api(path){
+      const res = await fetch(apiBase() + path);
+      if(!res.ok){
+        const txt = await res.text().catch(()=> "");
+        throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+      }
+      return res.json();
+    }
+
+    function getParams(){
+      const stationId = Number($("stationId").value || 0);
+      const fuelType = ($("fuelType").value || "").trim();
+      if(!stationId) throw new Error("Station ID");
+      return { stationId, fuelType };
+    }
+
+    async function load(){
+      const { stationId, fuelType } = getParams();
+      let qs = `station_id=${encodeURIComponent(stationId)}`;
+      if(fuelType) qs += `&fuel_type=${encodeURIComponent(fuelType)}`;
+
+      const data = await api(`/api/queue/panel?${qs}`);
+
+      const called = data.called || [];
+      const waiting = data.waiting || [];
+
+      $("waitingCount").textContent = String(data.waiting_count ?? waiting.length ?? 0);
+      $("updatedAt").textContent = new Date().toLocaleTimeString();
+
+      // current = первый в списке called (самый свежий по called_at из backend)
+      const cur = called.length ? called[0] : null;
+      if(!cur){
+        $("currentTicket").textContent = I18N.t("none");
+        $("currentTime").textContent = I18N.t("none");
+        $("currentId").textContent = I18N.t("none");
+        $("currentFuel").textContent = ($("fuelType").value || I18N.t("none")) || I18N.t("none");
+      } else {
+        $("currentTicket").textContent = cur.ticket_no || I18N.t("none");
+        $("currentTime").textContent = isoToLocal(cur.called_at);
+        $("currentId").textContent = cur.id ?? I18N.t("none");
+        $("currentFuel").textContent = ($("fuelType").value || I18N.t("none")) || I18N.t("none");
+      }
+
+      // table
+      const tb = $("calledTbody");
+      tb.innerHTML = "";
+      if(!called.length){
+        tb.innerHTML = `<tr><td colspan="3" class="muted">${I18N.t("none")}</td></tr>`;
+        return;
+      }
+
+      for(const t of called.slice(0, 10)){
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><b style="font-size:16px">${t.ticket_no || I18N.t("none")}</b></td>
+          <td class="muted">${isoToLocal(t.called_at)}</td>
+          <td class="muted">${t.id ?? ""}</td>
+        `;
+        tb.appendChild(tr);
+      }
+    }
+
+    function setupAuto(){
+      const sel = $("autoRefresh");
+      function apply(){
+        const sec = Number(sel.value || 0);
+        clearInterval(autoTimer);
+        autoTimer = null;
+        if(sec > 0){
+          autoTimer = setInterval(()=>load().catch(console.error), sec * 1000);
+        }
+      }
+      sel.addEventListener("change", apply);
+      apply();
+    }
+
+    function setupLang(){
+      const sel = $("langSelect");
+      sel.value = I18N.getLang();
+      sel.addEventListener("change", () => I18N.setLang(sel.value));
+    }
+
+    // init
+    setupLang();
+    I18N.applyLang();
+    setupAuto();
+    load().catch(console.error);
+  </script>
+</body>
+</html>

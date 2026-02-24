@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Админка</title>
+  <style>
+    body{ font-family: Arial, sans-serif; margin:0; background:#f6f7fb; color:#111827; }
+    header{
+      padding:16px 18px;
+      background:#ffffff;
+      border-bottom:1px solid #e5e7eb;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+      position: sticky; top:0;
+    }
+    .brand{ font-size:22px; font-weight:800; }
+    .pill{
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      padding:10px 12px;
+      border:1px solid #e5e7eb;
+      border-radius:999px;
+      background:#fff;
+    }
+    input, select{
+      padding:10px 12px; border-radius:12px; border:1px solid #d1d5db; font-size:16px;
+    }
+    .btn{
+      padding:12px 14px; border-radius:14px; border:1px solid #d1d5db;
+      background:#fff; cursor:pointer; font-size:16px; font-weight:700;
+    }
+    .btn.primary{ background:#111827; color:#fff; border-color:#111827; }
+    .container{ padding:18px; max-width: 1100px; margin: 0 auto; }
+    .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
+    .card{
+      background:#fff; border:1px solid #e5e7eb; border-radius:18px; padding:16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.04);
+    }
+    .card h3{ margin:0 0 8px; font-size:20px; }
+    .muted{ color:#6b7280; }
+    .card .actions{ margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; }
+    .kpi{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .badge{
+      padding:8px 10px; border-radius:999px; font-size:14px; font-weight:700;
+      background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff;
+    }
+    .danger{ background:#fff1f2; color:#9f1239; border-color:#ffe4e6; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand" id="title">GasQ — Админка</div>
+    <div class="pill">
+      <span class="muted" id="apiLabel">API</span>
+      <input id="apiBase" type="text" value="http://localhost:8000" style="width:260px" />
+      <span class="muted" id="langLabel">Язык</span>
+      <select id="lang">
+        <option value="ru">RU</option>
+        <option value="uz">UZ</option>
+        <option value="en">EN</option>
+      </select>
+      <button class="btn" id="logoutBtn">Выйти</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="kpi">
+      <div class="badge" id="whoami">…</div>
+      <div class="badge" id="roleBadge">…</div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 id="reportsTitle">📊 Отчёты</h3>
+        <div class="muted" id="reportsDesc">Сводка по талонам, фильтр по датам, экспорт CSV.</div>
+        <div class="actions">
+          <a class="btn primary" href="/admin/reports.html" id="goReports">Открыть</a>
+        </div>
+      </div>
+
+      <div class="card" id="usersCard">
+        <h3 id="usersTitle">👥 Пользователи</h3>
+        <div class="muted" id="usersDesc">CRUD пользователей (admin-only).</div>
+        <div class="actions">
+          <a class="btn primary" href="/admin/users.html" id="goUsers">Открыть</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="terminalTitle">⛽ Терминал</h3>
+        <div class="muted" id="terminalDesc">Табло очереди и управление “вызвать следующего”.</div>
+        <div class="actions">
+          <a class="btn" href="/terminal/index.html" id="goTerminal">Открыть табло</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="driverTitle">🚗 Driver</h3>
+        <div class="muted" id="driverDesc">Страница водителя (встать в очередь).</div>
+        <div class="actions">
+          <a class="btn" href="/driver/index.html" id="goDriver">Открыть</a>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:18px"></div>
+    <div class="card">
+      <h3 id="statusTitle">✅ Статус</h3>
+      <div class="muted" id="statusText">Проверяем доступ…</div>
+    </div>
+  </div>
+
+  <script src="/auth.js"></script>
+  <script>
+    const I18N = {
+      ru: {
+        title:"GasQ — Админка", api:"API", lang:"Язык", logout:"Выйти",
+        reportsTitle:"📊 Отчёты", reportsDesc:"Сводка по талонам, фильтр по датам, экспорт CSV.", open:"Открыть",
+        usersTitle:"👥 Пользователи", usersDesc:"CRUD пользователей (admin-only).",
+        terminalTitle:"⛽ Терминал", terminalDesc:"Табло очереди и управление “вызвать следующего”.", openBoard:"Открыть табло",
+        driverTitle:"🚗 Driver", driverDesc:"Страница водителя (встать в очередь).",
+        statusTitle:"✅ Статус",
+        ok:"Доступ подтверждён. Всё работает.",
+        hello:"Вы вошли как",
+        role:"Роль"
+      },
+      uz: {
+        title:"GasQ — Admin", api:"API", lang:"Til", logout:"Chiqish",
+        reportsTitle:"📊 Hisobotlar", reportsDesc:"Talонlar bo‘yicha, sana filtri, CSV eksport.", open:"Ochish",
+        usersTitle:"👥 Foydalanuvchilar", usersDesc:"CRUD (faqat admin).",
+        terminalTitle:"⛽ Terminal", terminalDesc:"Navbat tablоsi va “keyingisini chaqirish”.", openBoard:"Tabloni ochish",
+        driverTitle:"🚗 Driver", driverDesc:"Haydovchi sahifasi (navbatga turish).",
+        statusTitle:"✅ Holat",
+        ok:"Ruxsat tasdiqlandi. Hammasi ishlayapti.",
+        hello:"Kirish:", role:"Rol"
+      },
+      en: {
+        title:"GasQ — Admin", api:"API", lang:"Language", logout:"Logout",
+        reportsTitle:"📊 Reports", reportsDesc:"Tickets summary, date filters, CSV export.", open:"Open",
+        usersTitle:"👥 Users", usersDesc:"Users CRUD (admin-only).",
+        terminalTitle:"⛽ Terminal", terminalDesc:"Queue board + call-next control.", openBoard:"Open board",
+        driverTitle:"🚗 Driver", driverDesc:"Driver page (join queue).",
+        statusTitle:"✅ Status",
+        ok:"Access confirmed. Everything works.",
+        hello:"Logged in as", role:"Role"
+      }
+    };
+    function t(k){
+      const lang = document.getElementById("lang").value;
+      return (I18N[lang] && I18N[lang][k]) || I18N.ru[k] || k;
+    }
+    function applyLang(){
+      document.getElementById("title").textContent = t("title");
+      document.getElementById("apiLabel").textContent = t("api");
+      document.getElementById("langLabel").textContent = t("lang");
+      document.getElementById("logoutBtn").textContent = t("logout");
+
+      document.getElementById("reportsTitle").textContent = t("reportsTitle");
+      document.getElementById("reportsDesc").textContent = t("reportsDesc");
+      document.getElementById("goReports").textContent = t("open");
+
+      document.getElementById("usersTitle").textContent = t("usersTitle");
+      document.getElementById("usersDesc").textContent = t("usersDesc");
+      document.getElementById("goUsers").textContent = t("open");
+
+      document.getElementById("terminalTitle").textContent = t("terminalTitle");
+      document.getElementById("terminalDesc").textContent = t("terminalDesc");
+      document.getElementById("goTerminal").textContent = t("openBoard");
+
+      document.getElementById("driverTitle").textContent = t("driverTitle");
+      document.getElementById("driverDesc").textContent = t("driverDesc");
+      document.getElementById("goDriver").textContent = t("open");
+
+      document.getElementById("statusTitle").textContent = t("statusTitle");
+    }
+
+    document.getElementById("lang").addEventListener("change", applyLang);
+    document.getElementById("logoutBtn").addEventListener("click", ()=>AUTH.logout());
+
+    (async ()=>{
+      applyLang();
+      try{
+        const me = await AUTH.me();
+        document.getElementById("whoami").textContent = `${t("hello")}: ${me.username}`;
+        document.getElementById("roleBadge").textContent = `${t("role")}: ${me.role}`;
+
+        // скрываем Users для не-admin
+        if(me.role !== "admin"){
+          document.getElementById("usersCard").style.display = "none";
+        }
+        document.getElementById("statusText").textContent = t("ok");
+      }catch(e){
+        console.error(e);
+        location.href = "/admin/login.html";
+      }
+    })();
+  </script>
+</body>
+</html>

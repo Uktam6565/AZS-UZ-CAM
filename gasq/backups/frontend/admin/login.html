@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Вход</title>
+  <style>
+    body{ font-family: Arial, sans-serif; margin:0; background:#0b1220; color:#eaf0ff; }
+    .wrap{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:18px; }
+    .card{
+      width: min(520px, 100%);
+      background: rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      backdrop-filter: blur(10px);
+    }
+    h1{ margin:0 0 12px; font-size: 26px; }
+    .row{ display:flex; gap:12px; flex-wrap:wrap; }
+    label{ display:block; width:100%; margin:10px 0 6px; color:#cbd6ff; font-size:14px; }
+    input, select{
+      width:100%;
+      padding:14px 14px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.25);
+      color:#eaf0ff;
+      outline:none;
+      font-size: 18px;
+    }
+    input::placeholder{ color: rgba(234,240,255,0.55); }
+    .btn{
+      width:100%;
+      padding:14px 16px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,0.18);
+      background:#ffffff;
+      color:#101828;
+      cursor:pointer;
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 14px;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .muted{ color: rgba(234,240,255,0.75); font-size: 14px; margin-top:10px; }
+    .err{ background: rgba(255,64,64,0.14); border:1px solid rgba(255,64,64,0.30); padding:10px 12px; border-radius:14px; margin-top:12px; display:none; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .pill{
+      display:flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border:1px solid rgba(255,255,255,0.16);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.18);
+      font-size: 14px;
+      color:#cbd6ff;
+    }
+    .small{ font-size: 14px; }
+    a{ color:#cbd6ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 id="title">GasQ — Вход</h1>
+          <div class="muted" id="subtitle">Админ-панель / роли / отчёты</div>
+        </div>
+        <div class="pill">
+          <span id="langLabel">Язык</span>
+          <select id="lang" class="small" style="width:auto; padding:8px 10px;">
+            <option value="ru">RU</option>
+            <option value="uz">UZ</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+
+      <label id="apiLabel" for="apiBase">API</label>
+      <input id="apiBase" type="text" value="http://localhost:8000" />
+
+      <label id="userLabel" for="username">Логин</label>
+      <input id="username" type="text" placeholder="admin / operator / viewer" autocomplete="username" />
+
+      <label id="passLabel" for="password">Пароль</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+      <button id="loginBtn" class="btn">Войти</button>
+
+      <div id="errBox" class="err"></div>
+
+      <div class="muted" id="hint">
+        Если не помнишь логины: admin/admin123, operator/operator123, viewer/viewer123
+      </div>
+
+      <div class="muted small" style="margin-top:12px;">
+        Быстрые ссылки: <a href="/terminal/index.html">Табло</a> • <a href="/driver/index.html">Driver</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/auth.js"></script>
+  <script>
+    const I18N = {
+      ru: {
+        title: "GasQ — Вход",
+        subtitle: "Админ-панель / роли / отчёты",
+        api: "API",
+        user: "Логин",
+        pass: "Пароль",
+        login: "Войти",
+        lang: "Язык",
+        hint: "Если не помнишь логины: admin/admin123, operator/operator123, viewer/viewer123",
+        errConn: "Ошибка соединения с сервером. Проверь, что backend запущен (порт 8000).",
+        errBad: "Неверный логин или пароль."
+      },
+      uz: {
+        title: "GasQ — Kirish",
+        subtitle: "Admin panel / rollar / hisobotlar",
+        api: "API",
+        user: "Login",
+        pass: "Parol",
+        login: "Kirish",
+        lang: "Til",
+        hint: "Loginlar: admin/admin123, operator/operator123, viewer/viewer123",
+        errConn: "Serverga ulanib bo‘lmadi. Backend (8000) ishlayotganini tekshir.",
+        errBad: "Login yoki parol noto‘g‘ri."
+      },
+      en: {
+        title: "GasQ — Login",
+        subtitle: "Admin panel / roles / reports",
+        api: "API",
+        user: "Username",
+        pass: "Password",
+        login: "Sign in",
+        lang: "Language",
+        hint: "Accounts: admin/admin123, operator/operator123, viewer/viewer123",
+        errConn: "Cannot reach server. Check backend is running on port 8000.",
+        errBad: "Invalid username or password."
+      }
+    };
+
+    function t(k){
+      const lang = document.getElementById("lang").value;
+      return (I18N[lang] && I18N[lang][k]) || I18N.ru[k] || k;
+    }
+
+    function applyLang(){
+      document.getElementById("title").textContent = t("title");
+      document.getElementById("subtitle").textContent = t("subtitle");
+      document.getElementById("apiLabel").textContent = t("api");
+      document.getElementById("userLabel").textContent = t("user");
+      document.getElementById("passLabel").textContent = t("pass");
+      document.getElementById("loginBtn").textContent = t("login");
+      document.getElementById("langLabel").textContent = t("lang");
+      document.getElementById("hint").textContent = t("hint");
+    }
+
+    function showErr(msg){
+      const box = document.getElementById("errBox");
+      box.style.display = "block";
+      box.textContent = msg;
+    }
+    function hideErr(){
+      const box = document.getElementById("errBox");
+      box.style.display = "none";
+      box.textContent = "";
+    }
+
+    async function doLogin(){
+      hideErr();
+      const u = document.getElementById("username").value.trim();
+      const p = document.getElementById("password").value;
+      if(!u || !p) return;
+
+      try{
+        await AUTH.login(u, p);
+        // проверим токен
+        await AUTH.me();
+        location.href = "/admin/index.html";
+      }catch(e){
+        const msg = (e && e.message) ? e.message : "";
+        if(msg.includes("Неверный") || msg.includes("Invalid")){
+          showErr(t("errBad"));
+        }else{
+          showErr(t("errConn"));
+          console.error(e);
+        }
+      }
+    }
+
+    document.getElementById("lang").addEventListener("change", applyLang);
+    document.getElementById("loginBtn").addEventListener("click", doLogin);
+    document.getElementById("password").addEventListener("keydown", (ev)=>{ if(ev.key==="Enter") doLogin(); });
+
+    // если уже залогинен — отправляем в админку
+    (async ()=>{
+      applyLang();
+      if(AUTH.token){
+        try{
+          await AUTH.me();
+          location.href = "/admin/index.html";
+        }catch(_){ /* ignore */ }
+      }
+    })();
+  </script>
+</body>
+</html>

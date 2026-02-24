@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Users</title>
+  <style>
+    body{ font-family: Arial, sans-serif; margin:0; background:#f6f7fb; color:#111827; }
+    header{
+      padding:16px 18px;
+      background:#ffffff;
+      border-bottom:1px solid #e5e7eb;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+      position: sticky; top:0;
+    }
+    .brand{ font-size:22px; font-weight:800; }
+    .pill{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
+    input, select{
+      padding:10px 12px; border-radius:12px; border:1px solid #d1d5db; font-size:16px;
+    }
+    .btn{
+      padding:12px 14px; border-radius:14px; border:1px solid #d1d5db;
+      background:#fff; cursor:pointer; font-size:16px; font-weight:800;
+    }
+    .btn.primary{ background:#111827; color:#fff; border-color:#111827; }
+    .btn.danger{ background:#fff1f2; border-color:#fecdd3; color:#9f1239; }
+    .btn:active{ transform: translateY(1px); }
+    .container{ padding:18px; max-width: 1100px; margin: 0 auto; }
+    .card{
+      background:#fff; border:1px solid #e5e7eb; border-radius:18px; padding:16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.04);
+    }
+    table{ width:100%; border-collapse:collapse; margin-top:14px; background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; }
+    th, td{ padding:12px; border-bottom:1px solid #eef2f7; text-align:left; font-size:16px; }
+    th{ background:#f3f4f6; }
+    .muted{ color:#6b7280; }
+    .row{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+    .err{ margin-top:12px; padding:12px 14px; border-radius:16px; border:1px solid #fecaca; background:#fff1f2; color:#9f1239; display:none; }
+    .ok{ margin-top:12px; padding:12px 14px; border-radius:16px; border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; display:none; }
+    .tag{ padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; font-weight:800; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand" id="title">👥 Пользователи</div>
+    <div class="pill">
+      <span class="muted" id="apiLabel">API</span>
+      <input id="apiBase" type="text" value="http://localhost:8000" style="width:260px" />
+      <span class="muted" id="langLabel">Язык</span>
+      <select id="lang">
+        <option value="ru">RU</option>
+        <option value="uz">UZ</option>
+        <option value="en">EN</option>
+      </select>
+      <button class="btn" id="backBtn">Назад</button>
+      <button class="btn" id="logoutBtn">Выйти</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="muted" id="meBox">…</div>
+          <div style="height:6px"></div>
+          <span class="tag" id="roleTag">…</span>
+        </div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="row">
+        <div style="min-width:240px; flex:1;">
+          <div class="muted" id="uLabel">Username</div>
+          <input id="username" type="text" placeholder="newuser" />
+        </div>
+        <div style="min-width:240px; flex:1;">
+          <div class="muted" id="pLabel">Password</div>
+          <input id="password" type="text" placeholder="password123" />
+        </div>
+        <div style="min-width:220px;">
+          <div class="muted" id="rLabel">Role</div>
+          <select id="role">
+            <option value="viewer">viewer</option>
+            <option value="operator">operator</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn primary" id="createBtn">Создать</button>
+        </div>
+      </div>
+
+      <div id="okBox" class="ok"></div>
+      <div id="errBox" class="err"></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th id="thUser">Username</th>
+          <th id="thRole">Role</th>
+          <th id="thActive">Active</th>
+          <th id="thCreated">Created</th>
+          <th id="thActions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <script src="/admin/auth.js"></script>
+  <script>
+    const I18N = {
+      ru:{ title:"👥 Пользователи", api:"API", lang:"Язык", back:"Назад", logout:"Выйти",
+           u:"Username", p:"Password", r:"Role", create:"Создать",
+           thUser:"Username", thRole:"Role", thActive:"Active", thCreated:"Created", thActions:"Действия",
+           createdOk:"Пользователь создан", updatedOk:"Обновлено", deletedOk:"Удалено",
+           err:"Ошибка", adminOnly:"Эта страница только для admin" },
+      uz:{ title:"👥 Foydalanuvchilar", api:"API", lang:"Til", back:"Orqaga", logout:"Chiqish",
+           u:"Username", p:"Parol", r:"Rol", create:"Yaratish",
+           thUser:"Username", thRole:"Rol", thActive:"Active", thCreated:"Created", thActions:"Actions",
+           createdOk:"Yaratildi", updatedOk:"Yangilandi", deletedOk:"O‘chirildi",
+           err:"Xatolik", adminOnly:"Bu sahifa faqat admin uchun" },
+      en:{ title:"👥 Users", api:"API", lang:"Language", back:"Back", logout:"Logout",
+           u:"Username", p:"Password", r:"Role", create:"Create",
+           thUser:"Username", thRole:"Role", thActive:"Active", thCreated:"Created", thActions:"Actions",
+           createdOk:"User created", updatedOk:"Updated", deletedOk:"Deleted",
+           err:"Error", adminOnly:"This page is admin-only" }
+    };
+    function t(k){
+      const lang = document.getElementById("lang").value;
+      return (I18N[lang] && I18N[lang][k]) || I18N.ru[k] || k;
+    }
+    function applyLang(){
+      document.getElementById("title").textContent = t("title");
+      document.getElementById("apiLabel").textContent = t("api");
+      document.getElementById("langLabel").textContent = t("lang");
+      document.getElementById("backBtn").textContent = t("back");
+      document.getElementById("logoutBtn").textContent = t("logout");
+
+      document.getElementById("uLabel").textContent = t("u");
+      document.getElementById("pLabel").textContent = t("p");
+      document.getElementById("rLabel").textContent = t("r");
+      document.getElementById("createBtn").textContent = t("create");
+
+      document.getElementById("thUser").textContent = t("thUser");
+      document.getElementById("thRole").textContent = t("thRole");
+      document.getElementById("thActive").textContent = t("thActive");
+      document.getElementById("thCreated").textContent = t("thCreated");
+      document.getElementById("thActions").textContent = t("thActions");
+    }
+    function ok(msg){
+      const b = document.getElementById("okBox");
+      b.style.display="block"; b.textContent=msg;
+      setTimeout(()=>{ b.style.display="none"; }, 1800);
+    }
+    function err(msg){
+      const b = document.getElementById("errBox");
+      b.style.display="block"; b.textContent=msg;
+    }
+    function clearErr(){
+      const b = document.getElementById("errBox");
+      b.style.display="none"; b.textContent="";
+    }
+
+    async function loadUsers(){
+      clearErr();
+      const users = await AUTH.api("/api/admin/users");
+      const tbody = document.getElementById("tbody");
+      tbody.innerHTML = "";
+
+      for(const u of users){
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${u.id}</td>
+          <td>${u.username}</td>
+          <td>
+            <select data-id="${u.id}" class="roleSel">
+              <option value="viewer">viewer</option>
+              <option value="operator">operator</option>
+              <option value="admin">admin</option>
+            </select>
+          </td>
+          <td>
+            <select data-id="${u.id}" class="activeSel">
+              <option value="1">1</option>
+              <option value="0">0</option>
+            </select>
+          </td>
+          <td class="muted">${(u.created_at || "").toString().replace("T"," ")}</td>
+          <td style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn primary saveBtn" data-id="${u.id}">Сохранить</button>
+            <button class="btn danger delBtn" data-id="${u.id}">Удалить</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+
+        tr.querySelector(".roleSel").value = u.role;
+        tr.querySelector(".activeSel").value = String(u.is_active ? 1 : 0);
+      }
+
+      // кнопки — крупно и читаемо
+      tbody.querySelectorAll(".saveBtn").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = btn.getAttribute("data-id");
+          const role = tbody.querySelector(`.roleSel[data-id="${id}"]`).value;
+          const is_active = Number(tbody.querySelector(`.activeSel[data-id="${id}"]`).value) ? 1 : 0;
+          try{
+            await AUTH.api(`/api/admin/users/${id}`, {
+              method:"PATCH",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify({ role, is_active })
+            });
+            ok(t("updatedOk"));
+          }catch(e){
+            console.error(e);
+            err(t("err") + ": " + (e.message||""));
+          }
+        });
+      });
+
+      tbody.querySelectorAll(".delBtn").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = btn.getAttribute("data-id");
+          if(!confirm("Удалить пользователя #" + id + "?")) return;
+          try{
+            await AUTH.api(`/api/admin/users/${id}`, { method:"DELETE" });
+            ok(t("deletedOk"));
+            await loadUsers();
+          }catch(e){
+            console.error(e);
+            err(t("err") + ": " + (e.message||""));
+          }
+        });
+      });
+    }
+
+    async function createUser(){
+      clearErr();
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const role = document.getElementById("role").value;
+      if(!username || !password){
+        err("username/password?");
+        return;
+      }
+      try{
+        await AUTH.api("/api/admin/users", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ username, password, role })
+        });
+        ok(t("createdOk"));
+        document.getElementById("username").value = "";
+        document.getElementById("password").value = "";
+        document.getElementById("role").value = "viewer";
+        await loadUsers();
+      }catch(e){
+        console.error(e);
+        err(t("err") + ": " + (e.message||""));
+      }
+    }
+
+    document.getElementById("lang").addEventListener("change", applyLang);
+    document.getElementById("backBtn").addEventListener("click", ()=>location.href="/admin/index.html");
+    document.getElementById("logoutBtn").addEventListener("click", ()=>AUTH.logout());
+    document.getElementById("createBtn").addEventListener("click", createUser);
+
+    (async ()=>{
+      applyLang();
+      try{
+        const me = await AUTH.me();
+        document.getElementById("meBox").textContent = `Авторизация OK • ${me.username}`;
+        document.getElementById("roleTag").textContent = `role: ${me.role}`;
+
+        if(me.role !== "admin"){
+          err(t("adminOnly"));
+          // для безопасности — уводим
+          setTimeout(()=>location.href="/admin/index.html", 900);
+          return;
+        }
+        await loadUsers();
+      }catch(e){
+        console.error(e);
+        location.href="/admin/login.html";
+      }
+    })();
+  </script>
+</body>
+</html>

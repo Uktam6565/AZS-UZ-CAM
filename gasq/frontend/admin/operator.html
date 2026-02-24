@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Operator</title>
+
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#101a2e;
+      --text:#e8edf7;
+      --muted:#a7b2c6;
+      --line:rgba(255,255,255,0.08);
+      --good:#20c997;
+      --warn:#f59f00;
+      --bad:#ff6b6b;
+      --btn:#1b2a4a;
+      --btn2:#22345c;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius:16px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family:var(--font);
+      background: radial-gradient(1000px 700px at 30% 20%, #1a2a52 0%, var(--bg) 55%, #060b14 100%);
+      color:var(--text);
+    }
+    .wrap{ max-width: 1200px; margin: 0 auto; padding: 20px 16px 32px; }
+    .topbar{
+      display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+      margin-bottom: 14px;
+    }
+    .title{ display:flex; flex-direction:column; gap:4px; }
+    .title h1{ margin:0; font-size: 24px; letter-spacing:0.2px; }
+    .title .sub{ color: var(--muted); font-size: 13px; }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .controls{
+      display:grid;
+      grid-template-columns: 160px 1fr 160px 1fr;
+      gap:10px;
+      align-items:end;
+    }
+    @media (max-width: 860px){
+      .controls{ grid-template-columns: 1fr 1fr; }
+    }
+    label{
+      display:flex; flex-direction:column; gap:6px;
+      font-size: 13px; color: var(--muted);
+    }
+    input, select{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline:none;
+      font-size: 15px;
+    }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-top: 12px; }
+    .right{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; align-items:center; }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--btn2), var(--btn));
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 14px;
+      cursor:pointer;
+      font-weight: 800;
+      font-size: 15px;
+      transition: transform .05s ease, opacity .1s ease;
+      min-width: 150px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .btn.small{ min-width: unset; padding: 10px 12px; border-radius: 12px; font-size: 14px; }
+    .btn.good{ background: linear-gradient(180deg, rgba(32,201,151,0.25), rgba(32,201,151,0.10)); border-color: rgba(32,201,151,0.35); }
+    .btn.warn{ background: linear-gradient(180deg, rgba(245,159,0,0.26), rgba(245,159,0,0.10)); border-color: rgba(245,159,0,0.35); }
+    .btn.bad { background: linear-gradient(180deg, rgba(255,107,107,0.25), rgba(255,107,107,0.10)); border-color: rgba(255,107,107,0.35); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding: 8px 10px; border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      font-size: 13px; color: var(--muted);
+      max-width:100%;
+    }
+    .pill strong{ color: var(--text); font-weight:900; }
+    .dot{ width:10px; height:10px; border-radius:50%; background: rgba(255,255,255,0.2); }
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+    .card h2{ margin: 0 0 10px; font-size: 18px; letter-spacing:0.2px; }
+
+    table{
+      width:100%;
+      border-collapse: collapse;
+      overflow:hidden;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.18);
+    }
+    th, td{
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align:left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    th{
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 13px;
+      background: rgba(255,255,255,0.04);
+    }
+    tr:last-child td{ border-bottom:none; }
+    .muted{ color: var(--muted); }
+
+    .tag{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 6px 10px; border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 12px; color: var(--muted);
+      background: rgba(0,0,0,0.22);
+      white-space:nowrap;
+    }
+    .tag .dot{ width:8px; height:8px; border-radius:50%; }
+    .tag.good .dot{ background: var(--good); }
+    .tag.warn .dot{ background: var(--warn); }
+    .tag.bad  .dot{ background: var(--bad); }
+
+    .link{ color: #b8cffc; text-decoration:none; font-weight: 800; }
+    .link:hover{ text-decoration: underline; }
+
+    .toast{
+      position: fixed; right: 16px; bottom: 16px;
+      max-width: 560px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(10,16,30,0.92);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      display:none;
+      font-size: 14px;
+      line-height:1.3;
+      z-index: 50;
+    }
+    .toast.show{ display:block; }
+    .toast .t{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    .qrbox{
+      display:grid;
+      grid-template-columns: 1fr 380px;
+      gap: 14px;
+      align-items: start;
+      width:100%;
+    }
+    @media (max-width: 900px){
+      .qrbox{ grid-template-columns: 1fr; }
+    }
+    .qrpanel{
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.22);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .qrviewer{
+      width:100%;
+      border-radius: 12px;
+      overflow:hidden;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.35);
+    }
+    .qrviewer video{ width:100%; height:auto; display:block; }
+    .qrhint{
+      margin-top:10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height:1.35;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>🧑‍💼 GasQ — <span data-i18n="operator_title">Оператор</span></h1>
+        <div class="sub" data-i18n="operator_sub">Вызов → заправка → завершение + история</div>
+      </div>
+
+      <div class="right">
+        <select id="langSelect" class="btn small" style="min-width:unset;">
+          <option value="ru">RU</option>
+          <option value="uz">UZ</option>
+          <option value="en">EN</option>
+        </select>
+
+        <a class="link" href="/admin/index.html" data-i18n="back_admin">⬅ Админка</a>
+        <a class="link" href="/terminal/index.html" data-i18n="board">🖥 Табло</a>
+        <button class="btn small bad" onclick="logout()" data-i18n="logout">Выйти</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="controls">
+        <label>
+          <span data-i18n="station_id">Station ID</span>
+          <input id="stationId" type="number" min="1" value="1" />
+        </label>
+
+        <label>
+          <span data-i18n="fuel_filter">Тип топлива (фильтр)</span>
+          <select id="fuelType">
+            <option value="" data-i18n="fuel_all">Все</option>
+            <option value="gasoline">gasoline</option>
+            <option value="diesel">diesel</option>
+            <option value="lpg">lpg</option>
+            <option value="ev">ev</option>
+          </select>
+        </label>
+
+        <label>
+          <span data-i18n="api">API</span>
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </label>
+
+        <label>
+          <span data-i18n="auto_refresh">Автообновление</span>
+          <select id="autoRefresh">
+            <option value="5">5s</option>
+            <option value="10">10s</option>
+            <option value="15">15s</option>
+            <option value="0">off</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row">
+        <div class="right">
+          <button id="btnLoad" class="btn small" onclick="load()" data-i18n="refresh">🔄 Обновить</button>
+          <button id="btnCallNext" class="btn small warn" onclick="callNext()" data-i18n="call_next">📣 Вызвать следующего</button>
+          <button id="btnStartFuel" class="btn small good" onclick="startFueling()" data-i18n="start_fueling">⛽ Начать заправку</button>
+          <button id="btnFinish" class="btn small good" onclick="finish()" data-i18n="finish">✅ Завершить</button>
+          <button id="btnCancel" class="btn small bad" onclick="cancel()" data-i18n="cancel">✖ Отменить</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="qrbox">
+          <div class="pill" style="align-items:flex-start; width:100%">
+            <span class="dot warn" style="margin-top:6px"></span>
+            <div style="width:100%">
+              <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                <div style="font-weight:900; color:var(--text)">
+                  Check-in
+                </div>
+                <div class="right">
+                  <button id="btnScanStart" class="btn small good" onclick="startScan()">📷 Сканировать</button>
+                  <button id="btnScanStop" class="btn small bad" onclick="stopScan()" disabled>⏹ Стоп</button>
+                </div>
+              </div>
+
+              <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <input id="checkInText" type="text" placeholder="A033|9750C81F|1" style="flex:1; min-width:260px" />
+                <button id="btnCheckIn" class="btn small good" onclick="checkIn()">✅ Check-in</button>
+              </div>
+
+              <div class="qrhint">
+                Формат: <b>ticket_no|claim_code|station_id</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="qrpanel">
+            <div class="muted" style="margin-bottom:8px">Камера</div>
+            <div class="qrviewer">
+              <video id="cam" playsinline></video>
+            </div>
+            <div class="qrhint" id="qrHint">
+              Нажми «Сканировать». Разреши доступ к камере.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="pill" id="authPill">
+          <span class="dot" id="authDot"></span>
+          <span>Авторизация: <strong id="authText">…</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Сейчас обслуживается</h2>
+        <div class="muted">Смотри список ожидающих и историю ниже.</div>
+      </div>
+
+      <div class="card">
+        <h2>Ожидают</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:120px;">Ticket</th>
+              <th style="width:110px;">Статус</th>
+              <th>Создан</th>
+              <th style="width:80px;">id</th>
+            </tr>
+          </thead>
+          <tbody id="waitingTbody">
+            <tr><td colspan="4" class="muted">Загрузка…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>📚 История талонов</h2>
+      <div class="row">
+        <div class="right">
+          <button class="btn small" onclick="loadHistory()">📚 Обновить историю</button>
+        </div>
+        <div class="pill">
+          <span class="dot warn"></span>
+          <span id="histCounts" class="muted">—</span>
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;">id</th>
+              <th style="width:120px;">Ticket</th>
+              <th style="width:110px;">Fuel</th>
+              <th style="width:130px;">Status</th>
+              <th>Created</th>
+              <th>Called</th>
+              <th>Done</th>
+              <th style="width:110px;">Source</th>
+            </tr>
+          </thead>
+          <tbody id="histTbody">
+            <tr><td colspan="8" class="muted">Нажми “Обновить историю”</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="/auth.js"></script>
+  <script src="/i18n.js"></script>
+
+  <script>
+    // service worker (НЕ в style!)
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js").catch(console.error);
+      });
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    // --- UI helpers ---
+    function toast(msg, hint=""){
+      const el = $("toast");
+      el.innerHTML = `<div>${msg}</div>${hint ? `<div class="t">${hint}</div>` : ""}`;
+      el.classList.add("show");
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(()=>el.classList.remove("show"), 3800);
+    }
+
+    function apiBase(){
+      const base = ($("apiBase").value || "").trim().replace(/\/+$/, "");
+      return base;
+    }
+
+    async function api(path, opts={}){
+      const headers = opts.headers || {};
+      const token = window.AUTH ? AUTH.token : "";
+      if(token) headers["Authorization"] = "Bearer " + token;
+      opts.headers = headers;
+
+      const res = await fetch(apiBase() + path, opts);
+      if(!res.ok){
+        let txt = "";
+        try{ txt = await res.text(); }catch(e){}
+        throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+      }
+      const ct = res.headers.get("content-type") || "";
+      if(ct.includes("application/json")) return res.json();
+      return res.text();
+    }
+
+    function setAuthBadge(){
+      const ok = !!(window.AUTH && AUTH.token);
+      $("authText").textContent = ok ? "OK" : "нет токена";
+      $("authDot").className = "dot " + (ok ? "good" : "bad");
+    }
+
+    function getParams(){
+      const stationId = Number($("stationId").value || 0);
+      const fuelType = ($("fuelType").value || "").trim();
+      if(!stationId) throw new Error("Укажи Station ID");
+      return { stationId, fuelType };
+    }
+
+    // --- check-in ---
+    function parseClaim(raw){
+      const parts = String(raw || "").trim().split("|").map(s => s.trim());
+      const ticket_no = (parts[0] || "").toUpperCase();
+      const claim_code = (parts[1] || "").toUpperCase();
+      const station_id = Number(parts[2] || $("stationId").value || 0);
+      return { ticket_no, claim_code, station_id };
+    }
+
+    let loadingCheckIn = false;
+
+    async function checkIn() {
+      if (loadingCheckIn) return;
+      loadingCheckIn = true;
+      $("btnCheckIn").disabled = true;
+
+      try {
+        const raw = $("checkInText").value.trim();
+        if (!raw) throw new Error("Пусто");
+
+        const [ticket_no, claim_code, station_id] = raw.split("|");
+        if (!ticket_no || !claim_code || !station_id) {
+          throw new Error("Неверный формат QR");
+        }
+
+        const res = await api("/api/queue/check-in", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticket_no,
+            claim_code,
+            station_id: Number(station_id),
+          }),
+        });
+
+        toast("✅ Check-in OK", ticket_no);
+        $("checkInText").value = "";
+        await load();
+        await loadHistory();
+
+      } catch (err) {
+        toast("❌ Ошибка check-in", err.message);
+      } finally {
+        loadingCheckIn = false;
+        $("btnCheckIn").disabled = false;
+      }
+    }
+
+
+    function logout(){
+      if(window.AUTH) AUTH.logout();
+      setAuthBadge();
+      toast("Вы вышли", "Зайди снова через /admin/login.html");
+    }
+
+    // --- QR scan OFFLINE via BarcodeDetector ---
+    let stream = null;
+    let scanning = false;
+    let scanTimer = null;
+
+    function setScanButtons(){
+      $("btnScanStart").disabled = scanning;
+      $("btnScanStop").disabled = !scanning;
+    }
+
+    async function startScan(){
+      if(scanning) return;
+
+      if(!("BarcodeDetector" in window)){
+        toast("Сканер недоступен", "Нужен Chrome/Edge (BarcodeDetector).");
+        $("qrHint").textContent = "Твой браузер не поддерживает BarcodeDetector.";
+        return;
+      }
+
+      try{
+        scanning = true;
+        setScanButtons();
+        $("qrHint").textContent = "Камера запущена. Наведи QR в кадр.";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
+
+        const video = $("cam");
+        video.srcObject = stream;
+        await video.play();
+
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+
+        scanTimer = setInterval(async () => {
+          try{
+            const barcodes = await detector.detect(video);
+            if(barcodes && barcodes.length){
+              const txt = barcodes[0].rawValue || "";
+              if(txt){
+                $("checkInText").value = txt;
+                toast("✅ QR считан", txt);
+                stopScan();
+              }
+            }
+          }catch(e){
+            // тихо
+          }
+        }, 250);
+
+      }catch(err){
+        console.error(err);
+        toast("Не удалось запустить камеру", err.message || "");
+        scanning = false;
+        setScanButtons();
+        $("qrHint").textContent = "Ошибка камеры. Разреши доступ и попробуй снова.";
+      }
+    }
+
+    function stopScan(){
+      if(!scanning) return;
+      scanning = false;
+      setScanButtons();
+
+      if(scanTimer){ clearInterval(scanTimer); scanTimer = null; }
+
+      const video = $("cam");
+      try{ video.pause(); }catch(e){}
+      video.srcObject = null;
+
+      if(stream){
+        for(const t of stream.getTracks()) t.stop();
+        stream = null;
+      }
+      $("qrHint").textContent = "Сканер остановлен.";
+    }
+
+    // init
+    (function init(){
+      if(window.I18N){
+        const sel = $("langSelect");
+        sel.value = I18N.getLang();
+        sel.addEventListener("change", () => I18N.setLang(sel.value));
+      }
+
+      setAuthBadge();
+      setScanButtons();
+    })();
+  </script>
+</body>
+</html>

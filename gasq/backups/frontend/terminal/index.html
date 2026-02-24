@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GasQ — Табло</title>
+  <style>
+    :root{
+      --bg:#060b14;
+      --line: rgba(255,255,255,0.10);
+      --text:#e8edf7;
+      --muted:#a7b2c6;
+      --good:#20c997;
+      --warn:#f59f00;
+      --bad:#ff6b6b;
+      --shadow: 0 18px 50px rgba(0,0,0,0.40);
+      --radius: 22px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    html, body{ height:100%; }
+    body{
+      margin:0;
+      font-family:var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 800px at 25% 15%, #1a2a52 0%, rgba(26,42,82,0.25) 40%, transparent 70%),
+        radial-gradient(900px 700px at 80% 70%, rgba(32,201,151,0.18) 0%, transparent 60%),
+        radial-gradient(900px 700px at 20% 80%, rgba(245,159,0,0.14) 0%, transparent 65%),
+        linear-gradient(180deg, #0b1220 0%, var(--bg) 55%, #04070d 100%);
+      overflow:hidden;
+    }
+
+    .wrap{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      padding: 18px;
+      gap: 14px;
+    }
+
+    .top{
+      display:flex;
+      gap: 12px;
+      align-items:flex-end;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+
+    .brand{
+      display:flex;
+      flex-direction:column;
+      gap: 4px;
+    }
+    .brand .h{
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 0.3px;
+    }
+    .brand .s{
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .controls{
+      display:flex;
+      gap: 10px;
+      align-items:flex-end;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    label{
+      display:flex;
+      flex-direction:column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 170px;
+    }
+    input, select{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline: none;
+      font-size: 14px;
+    }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.22);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 14px;
+      cursor:pointer;
+      font-weight: 900;
+      font-size: 14px;
+      transition: transform .05s ease;
+      min-width: 130px;
+      user-select:none;
+    }
+    .btn:active{ transform: translateY(1px); }
+
+    .pill{
+      display:inline-flex;
+      gap: 10px;
+      align-items:center;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 100%;
+      white-space:nowrap;
+    }
+    .dot{
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      flex: 0 0 auto;
+    }
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    .main{
+      flex: 1 1 auto;
+      display:grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 14px;
+      min-height: 0;
+    }
+    @media (max-width: 980px){
+      .main{ grid-template-columns: 1fr; }
+    }
+
+    .leftGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      min-height: 0;
+    }
+    @media (max-width: 980px){
+      .leftGrid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-height: 0;
+      display:flex;
+      flex-direction:column;
+      gap: 14px;
+    }
+
+    .bigHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      flex-wrap:wrap;
+    }
+    .bigHeader h1{
+      margin:0;
+      font-size: 16px;
+      letter-spacing: 0.2px;
+      color: var(--muted);
+      font-weight: 1000;
+      text-transform: uppercase;
+    }
+
+    .statusTag{
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.22);
+      font-size: 13px;
+      font-weight: 1000;
+      color: var(--text);
+    }
+    .statusTag.good{ border-color: rgba(32,201,151,0.35); }
+    .statusTag.warn{ border-color: rgba(245,159,0,0.35); }
+    .statusTag.bad { border-color: rgba(255,107,107,0.35); }
+
+    .ticketBox{
+      flex: 1 1 auto;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      gap: 14px;
+      padding: 18px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.22);
+      position: relative;
+      overflow:hidden;
+      transform: translateZ(0);
+    }
+
+    .ticketNo{
+      font-weight: 1000;
+      letter-spacing: 2px;
+      line-height: 1;
+      text-align:center;
+      font-size: clamp(52px, 8vw, 140px);
+      word-break: break-word;
+      transition: transform 220ms ease, filter 220ms ease;
+    }
+
+    .ticketBox.flash::before{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background: radial-gradient(circle at 50% 40%, rgba(245,159,0,0.32), transparent 55%);
+      animation: flash 900ms ease;
+      pointer-events:none;
+    }
+    .ticketBox.flash .ticketNo{
+      transform: scale(1.06);
+      filter: drop-shadow(0 18px 40px rgba(245,159,0,0.22));
+    }
+    @keyframes flash{
+      0%{ opacity:0; transform:scale(0.8); }
+      30%{ opacity:1; }
+      100%{ opacity:0; transform:scale(1.1); }
+    }
+
+    .ticketBox.flashGood::before{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background: radial-gradient(circle at 50% 40%, rgba(32,201,151,0.28), transparent 55%);
+      animation: flash 900ms ease;
+      pointer-events:none;
+    }
+
+    .metaRow{
+      display:flex;
+      gap: 10px;
+      flex-wrap:wrap;
+      justify-content:center;
+      align-items:center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .metaRow b{ color: var(--text); }
+
+    .kbd{
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      padding: 4px 8px;
+      border-radius: 10px;
+      color: var(--text);
+      font-weight: 1000;
+    }
+
+    table{
+      width:100%;
+      border-collapse: collapse;
+      overflow:hidden;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.18);
+    }
+    th, td{
+      padding: 12px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align:left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    th{
+      color: var(--muted);
+      font-weight: 1000;
+      font-size: 12px;
+      background: rgba(255,255,255,0.04);
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+    }
+    tr:last-child td{ border-bottom:none; }
+
+    .toast{
+      position: fixed; right: 16px; bottom: 16px;
+      max-width: 560px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(10,16,30,0.92);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      display:none;
+      font-size: 14px;
+      line-height:1.3;
+      z-index: 50;
+    }
+    .toast.show{ display:block; }
+    .toast .t{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    /* TV MODE */
+    body.tv .wrap{ padding: 10px; gap: 10px; }
+    body.tv .brand .s{ display:none; }
+    body.tv label, body.tv input, body.tv select{ display:none; }
+    body.tv .btn{ min-width: 150px; }
+    body.tv th, body.tv td{ font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="h">🖥 GasQ — Табло очереди</div>
+        <div class="s">12.4 — отдельно: “Вызван” и “На заправке” + Post selector (визуально)</div>
+      </div>
+
+      <div class="controls">
+        <label>
+          Station ID
+          <input id="stationId" type="number" min="1" value="1" />
+        </label>
+
+        <label>
+          Тип топлива (фильтр)
+          <select id="fuelType">
+            <option value="">Все</option>
+            <option value="gasoline">gasoline</option>
+            <option value="diesel">diesel</option>
+            <option value="lpg">lpg</option>
+            <option value="ev">ev</option>
+          </select>
+        </label>
+
+        <label>
+          Пост (колонка)
+          <select id="postNo">
+            <option value="1">Post 1</option>
+            <option value="2">Post 2</option>
+            <option value="3">Post 3</option>
+            <option value="4">Post 4</option>
+          </select>
+        </label>
+
+        <label>
+          API
+          <input id="apiBase" type="text" value="http://localhost:8000" />
+        </label>
+
+        <label>
+          Автообновление
+          <select id="autoRefresh">
+            <option value="5">каждые 5 сек</option>
+            <option value="10" selected>каждые 10 сек</option>
+            <option value="15">каждые 15 сек</option>
+            <option value="0">выкл</option>
+          </select>
+        </label>
+
+        <button class="btn" onclick="load()">🔄 Обновить</button>
+        <button class="btn" onclick="toggleTV()">📺 TV Mode</button>
+        <button class="btn" onclick="goFullscreen()">⛶ Fullscreen</button>
+
+        <div class="pill" id="netPill">
+          <span class="dot warn" id="netDot"></span>
+          <span id="netText">ожидание…</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- LEFT: two big cards -->
+      <div class="leftGrid">
+        <div class="card">
+          <div class="bigHeader">
+            <h1>СЕЙЧАС ВЫЗЫВАЕТСЯ (called)</h1>
+            <div class="statusTag warn" id="calledTag">
+              <span class="dot warn" id="calledDot"></span>
+              <span id="calledText">called</span>
+            </div>
+          </div>
+
+          <div class="ticketBox" id="calledBox">
+            <div class="ticketNo" id="calledNo">—</div>
+            <div class="metaRow">
+              <span class="kbd">id: <b id="calledId">—</b></span>
+              <span class="kbd">fuel: <b id="calledFuel">—</b></span>
+              <span class="kbd">время: <b id="calledTime">—</b></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="bigHeader">
+            <h1>НА ЗАПРАВКЕ (fueling)</h1>
+            <div class="statusTag good" id="fuelingTag">
+              <span class="dot good" id="fuelingDot"></span>
+              <span id="fuelingText">fueling</span>
+            </div>
+          </div>
+
+          <div class="ticketBox" id="fuelingBox">
+            <div class="ticketNo" id="fuelingNo">—</div>
+            <div class="metaRow">
+              <span class="kbd">id: <b id="fuelingId">—</b></span>
+              <span class="kbd">fuel: <b id="fuelingFuel">—</b></span>
+              <span class="kbd">время: <b id="fuelingTime">—</b></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: waiting list -->
+      <div class="card">
+        <div class="bigHeader">
+          <h1>ОЖИДАЮТ (до 10)</h1>
+          <div class="pill" style="justify-content:center">
+            <span class="dot"></span>
+            <span>TV: <span class="kbd">F11</span> • <span class="kbd">T</span> • Refresh: <span class="kbd">R</span></span>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:140px;">Талон</th>
+              <th style="width:120px;">Статус</th>
+              <th style="width:90px;">id</th>
+            </tr>
+          </thead>
+          <tbody id="waitingTbody">
+            <tr><td colspan="3" style="color:var(--muted)">Загрузка…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function toast(msg, hint=""){
+      const el = $("toast");
+      el.innerHTML = `<div>${msg}</div>${hint ? `<div class="t">${hint}</div>` : ""}`;
+      el.classList.add("show");
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(()=>el.classList.remove("show"), 3800);
+    }
+
+    function apiBase(){
+      const v = ($("apiBase").value || "http://localhost:8000").trim();
+      return v.replace(/\/+$/, "");
+    }
+
+    function isoToLocal(iso){
+      if(!iso) return "—";
+      try{ return new Date(iso).toLocaleString(); }catch(e){ return iso; }
+    }
+
+    function setNet(ok, text){
+      $("netText").textContent = text;
+      $("netDot").className = "dot " + (ok ? "good" : "bad");
+      $("netPill").style.borderColor = ok ? "rgba(32,201,151,0.35)" : "rgba(255,107,107,0.35)";
+    }
+
+    function getParams(){
+      const stationId = Number($("stationId").value || 0);
+      const fuelType = ($("fuelType").value || "").trim();
+      const postNo = String($("postNo").value || "1");
+      if(!stationId) throw new Error("Укажи Station ID");
+      return { stationId, fuelType, postNo };
+    }
+
+    async function fetchPanel(){
+      const { stationId, fuelType } = getParams();
+      let qs = `station_id=${encodeURIComponent(stationId)}`;
+      if(fuelType) qs += `&fuel_type=${encodeURIComponent(fuelType)}`;
+
+      const url = apiBase() + `/api/queue/panel?${qs}`;
+      const res = await fetch(url, { method:"GET" });
+
+      if(!res.ok){
+        let txt = "";
+        try{ txt = await res.text(); }catch(e){}
+        throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+      }
+      return res.json();
+    }
+
+    // beep (без файлов)
+    function beep(freq=880){
+      try{
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        const ctx = window.__ac || (window.__ac = new AC());
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = freq;
+        g.gain.value = 0.0001;
+        o.connect(g); g.connect(ctx.destination);
+        const t = ctx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.20);
+        o.start(t); o.stop(t + 0.22);
+      }catch(e){}
+    }
+
+    function flash(el, good=false){
+      el.classList.remove("flash", "flashGood");
+      void el.offsetWidth;
+      el.classList.add(good ? "flashGood" : "flash");
+      setTimeout(()=>el.classList.remove("flash", "flashGood"), 950);
+    }
+
+    function render(panel){
+      const calledAll = Array.isArray(panel.called) ? panel.called : [];
+      const waiting = Array.isArray(panel.waiting) ? panel.waiting : [];
+
+      // backend сейчас возвращает called вместе с fueling, но мы разделим по status
+      const called = calledAll.filter(x => (x.status || "") === "called");
+      const fueling = calledAll.filter(x => (x.status || "") === "fueling");
+
+      const curCalled = called.length ? called[0] : null;
+      const curFueling = fueling.length ? fueling[0] : null;
+
+      const fuelType = ($("fuelType").value || "").trim();
+      const { stationId, postNo } = getParams();
+
+      // ключ режима (для хранения последних значений)
+      const keyBase = `gasq_term_${stationId}_${fuelType || "all"}_post${postNo}`;
+      const lastCalled = localStorage.getItem(keyBase + "_called") || "";
+      const lastFueling = localStorage.getItem(keyBase + "_fueling") || "";
+
+      const newCalled = curCalled ? (curCalled.ticket_no || "") : "";
+      const newFueling = curFueling ? (curFueling.ticket_no || "") : "";
+
+      // обновим блок called
+      if(!curCalled){
+        $("calledNo").textContent = "—";
+        $("calledId").textContent = "—";
+        $("calledFuel").textContent = fuelType || "—";
+        $("calledTime").textContent = "—";
+      } else {
+        $("calledNo").textContent = curCalled.ticket_no || "—";
+        $("calledId").textContent = curCalled.id ?? "—";
+        $("calledFuel").textContent = fuelType || "—";
+        $("calledTime").textContent = isoToLocal(curCalled.called_at);
+      }
+
+      // обновим блок fueling
+      if(!curFueling){
+        $("fuelingNo").textContent = "—";
+        $("fuelingId").textContent = "—";
+        $("fuelingFuel").textContent = fuelType || "—";
+        $("fuelingTime").textContent = "—";
+      } else {
+        $("fuelingNo").textContent = curFueling.ticket_no || "—";
+        $("fuelingId").textContent = curFueling.id ?? "—";
+        $("fuelingFuel").textContent = fuelType || "—";
+        $("fuelingTime").textContent = isoToLocal(curFueling.called_at);
+      }
+
+      // waiting table
+      const tb = $("waitingTbody");
+      const top = waiting.slice(0, 10);
+      if(top.length === 0){
+        tb.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">Нет ожидающих</td></tr>`;
+      } else {
+        tb.innerHTML = top.map(t => `
+          <tr>
+            <td><b style="font-size:16px">${t.ticket_no || "—"}</b></td>
+            <td style="color:var(--muted)">${t.status || "waiting"}</td>
+            <td style="color:var(--muted)">${t.id ?? ""}</td>
+          </tr>
+        `).join("");
+      }
+
+      // реакции на изменения (на текущем post)
+      if(newCalled && newCalled !== lastCalled){
+        beep(880);
+        flash($("calledBox"), false);
+        toast("📣 Новый вызов: " + newCalled, `Post ${postNo}`);
+      }
+      if(newFueling && newFueling !== lastFueling){
+        beep(660);
+        flash($("fuelingBox"), true);
+        toast("⛽ На заправке: " + newFueling, `Post ${postNo}`);
+      }
+
+      localStorage.setItem(keyBase + "_called", newCalled);
+      localStorage.setItem(keyBase + "_fueling", newFueling);
+    }
+
+    async function load(){
+      try{
+        setNet(true, "обновление…");
+        const data = await fetchPanel();
+        render(data);
+        setNet(true, "backend OK • " + new Date().toLocaleTimeString());
+      }catch(err){
+        console.error(err);
+        setNet(false, "ошибка связи с backend");
+        toast("Не удалось обновить табло", err.message || "");
+      }
+    }
+
+    function setupAuto(){
+      const sel = $("autoRefresh");
+      function apply(){
+        const sec = Number(sel.value || 0);
+        clearInterval(window.__autoT);
+        if(sec > 0) window.__autoT = setInterval(load, sec * 1000);
+      }
+      sel.addEventListener("change", apply);
+      apply();
+    }
+
+    function toggleTV(){
+      document.body.classList.toggle("tv");
+      localStorage.setItem("gasq_tv_mode", document.body.classList.contains("tv") ? "1" : "0");
+    }
+
+    async function goFullscreen(){
+      try{
+        const el = document.documentElement;
+        if(!document.fullscreenElement){
+          await el.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      }catch(e){
+        toast("Fullscreen недоступен", "Используй F11");
+      }
+    }
+
+    // горячие клавиши
+    window.addEventListener("keydown", (e)=>{
+      const k = (e.key || "").toLowerCase();
+      if(k === "t"){ toggleTV(); }
+      if(k === "r"){ load(); }
+    });
+
+    // сохранить выбранный post
+    function setupPersist(){
+      const postSel = $("postNo");
+      const st = localStorage.getItem("gasq_term_post") || "1";
+      postSel.value = st;
+      postSel.addEventListener("change", ()=>{
+        localStorage.setItem("gasq_term_post", postSel.value);
+        load(); // сразу перерендерить
+      });
+    }
+
+    // init
+    if(localStorage.getItem("gasq_tv_mode") === "1"){
+      document.body.classList.add("tv");
+    }
+
+    setupPersist();
+    setupAuto();
+    load();
+
+    // разблокировать звук кликом
+    window.addEventListener("pointerdown", () => {
+      try{
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        const ctx = window.__ac || (window.__ac = new AC());
+        if(ctx.state === "suspended") ctx.resume();
+      }catch(e){}
+    }, { once:true });
+  </script>
+</body>
+</html>

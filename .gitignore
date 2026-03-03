@@ -32,3 +32,10 @@ gasq/backups/
 .DS_Store
 Thumbs.db
 
+
+# Local backups/artifacts
+gasq/backups/
+backups/
+*.zip
+*.sql
+

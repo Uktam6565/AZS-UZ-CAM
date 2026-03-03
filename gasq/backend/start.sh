@@ -4,45 +4,39 @@ set -e
 echo "Starting GasQ backend..."
 
 python - <<'PY'
-import os, time
-import psycopg2
-from urllib.parse import urlparse
+import os, asyncio
+import asyncpg
 
 db_url = os.getenv("DATABASE_URL", "")
 if not db_url:
     print("DATABASE_URL is not set")
     raise SystemExit(1)
 
-db_url_sync = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-u = urlparse(db_url_sync)
+# asyncpg expects postgresql:// (SQLAlchemy async uses postgresql+asyncpg://)
+db_url_asyncpg = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-host = u.hostname
-port = u.port or 5432
-user = u.username
-password = u.password
-dbname = u.path.lstrip("/")
+async def wait_db():
+    last_err = None
+    for _ in range(60):
+        try:
+            conn = await asyncpg.connect(dsn=db_url_asyncpg, timeout=5)
+            await conn.execute("SELECT 1")
+            await conn.close()
+            print("DB is up")
+            return
+        except Exception as e:
+            last_err = e
+            await asyncio.sleep(1)
 
-for i in range(60):
-    try:
-        conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname=dbname)
-        conn.close()
-        print("DB is up")
-        break
-    except Exception:
-        time.sleep(1)
-else:
     print("DB is not reachable after 60s")
+    print("Last error:", repr(last_err))
     raise SystemExit(1)
+
+asyncio.run(wait_db())
 PY
 
 echo "Running migrations..."
 alembic upgrade head
 
-echo "Launching gunicorn..."
-exec gunicorn \
-  -k uvicorn.workers.UvicornWorker \
-  -w 2 \
-  -b 0.0.0.0:8000 \
-  app.main:app \
-  --access-logfile - \
-  --error-logfile -
+echo "Launching uvicorn..."
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000

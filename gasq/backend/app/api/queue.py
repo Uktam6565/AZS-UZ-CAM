@@ -7,17 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from math import ceil
 from app.services.eta import calc_eta_for_ticket
 from app.models.notification import Notification
+from sqlalchemy.exc import IntegrityError
 
 import secrets
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.queue import QueueTicket
 from app.models.station import Station
 from app.services.notify import notify_ticket_called
 from app.services.sms import SmsService
-from app.core.deps import require_role
+from app.core.deps import require_role, get_current_user
 from app.services.audit import audit
-from app.api.deps import get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -42,6 +43,38 @@ def _mask_phone(phone: str | None) -> str | None:
     head = p[:6]
     tail = p[-4:]
     return f"{head}***{tail}"
+
+def _called_timer_info(t, now: datetime) -> dict:
+    """
+    Таймер ожидания после вызова (called_at).
+    """
+    called_at = getattr(t, "called_at", None)
+    if not called_at:
+        return {
+            "wait_called_sec": None,
+            "wait_called_min": None,
+            "no_show_after_min": int(getattr(settings, "NO_SHOW_MINUTES", 0) or 0),
+            "no_show_left_min": None,
+            "no_show_deadline_at": None,
+        }
+
+    no_show_min = int(getattr(settings, "NO_SHOW_MINUTES", 0) or 0)
+    waited_sec = int((now - called_at).total_seconds())
+    waited_min = max(waited_sec // 60, 0)
+
+    deadline = called_at + timedelta(minutes=no_show_min) if no_show_min > 0 else None
+    left_min = None
+    if deadline:
+        left_sec = int((deadline - now).total_seconds())
+        left_min = max(left_sec // 60, 0)
+
+    return {
+        "wait_called_sec": max(waited_sec, 0),
+        "wait_called_min": waited_min,
+        "no_show_after_min": no_show_min,
+        "no_show_left_min": left_min,
+        "no_show_deadline_at": deadline.isoformat() if deadline else None,
+    }
 
 
 async def _next_ticket_no(db: AsyncSession, station_id: int, fuel_type: str) -> str:
@@ -99,19 +132,137 @@ async def join_queue(
     if not station or not getattr(station, "is_active", False):
         raise HTTPException(status_code=404, detail="Station not found or inactive")
 
+    # ----------------------------
+    # v12: защита от дублей
+    # ----------------------------
+    active_statuses = ["waiting", "called", "fueling"]
+
+    driver_user_id = None
+    if payload.get("driver_user_id") is not None:
+        try:
+            driver_user_id = int(payload["driver_user_id"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="driver_user_id must be integer")
+
+    driver_phone = (str(payload.get("driver_phone")).strip() if payload.get("driver_phone") else None)
+
+    # 1) По driver_user_id (если есть)
+    if driver_user_id is not None:
+        stmt_exist = (
+            select(QueueTicket)
+            .where(
+                QueueTicket.station_id == station_id,
+                QueueTicket.driver_user_id == driver_user_id,
+                QueueTicket.status.in_(active_statuses),
+            )
+            .order_by(QueueTicket.id.desc())
+            .limit(1)
+        )
+        res_exist = await db.execute(stmt_exist)
+        exist = res_exist.scalars().first()
+        if exist:
+            return {
+                "ok": True,
+                "already_exists": True,
+                "id": exist.id,
+                "ticket_no": exist.ticket_no,
+                "status": exist.status,
+                "claim_code": exist.claim_code,
+            }
+
+    # 2) По driver_phone (если user_id нет, но есть телефон)
+    if driver_user_id is None and driver_phone:
+        stmt_exist = (
+            select(QueueTicket)
+            .where(
+                QueueTicket.station_id == station_id,
+                QueueTicket.driver_phone == driver_phone,
+                QueueTicket.status.in_(active_statuses),
+            )
+            .order_by(QueueTicket.id.desc())
+            .limit(1)
+        )
+        res_exist = await db.execute(stmt_exist)
+        exist = res_exist.scalars().first()
+        if exist:
+            return {
+                "ok": True,
+                "already_exists": True,
+                "id": exist.id,
+                "ticket_no": exist.ticket_no,
+                "status": exist.status,
+                "claim_code": exist.claim_code,
+            }
+
+    # ----------------------------
+    # создаём новый талон
+    # ----------------------------
+
+        # >>> v13: анти-спам join (cooldown)
+        cooldown = int(getattr(settings, "JOIN_COOLDOWN_SECONDS", 0) or 0)
+
+        if cooldown > 0:
+            now = datetime.utcnow()
+
+            # если есть user_id — проверяем по нему
+            if driver_user_id is not None:
+                stmt_last = (
+                    select(QueueTicket)
+                    .where(
+                        QueueTicket.station_id == station_id,
+                        QueueTicket.driver_user_id == driver_user_id,
+                    )
+                    .order_by(QueueTicket.id.desc())
+                    .limit(1)
+                )
+                res_last = await db.execute(stmt_last)
+                last = res_last.scalars().first()
+
+                if last:
+                    last_dt = getattr(last, "created_at", None) or now
+                    age_sec = int((now - last_dt).total_seconds())
+                    if age_sec < cooldown:
+                        raise HTTPException(
+                            status_code=429,
+                            detail=f"Too many requests. Try again in {cooldown - age_sec}s",
+                        )
+
+            # если user_id нет, но есть телефон — проверяем по телефону
+            elif driver_phone:
+                stmt_last = (
+                    select(QueueTicket)
+                    .where(
+                        QueueTicket.station_id == station_id,
+                        QueueTicket.driver_phone == driver_phone,
+                    )
+                    .order_by(QueueTicket.id.desc())
+                    .limit(1)
+                )
+                res_last = await db.execute(stmt_last)
+                last = res_last.scalars().first()
+
+                if last:
+                    last_dt = getattr(last, "created_at", None) or now
+                    age_sec = int((now - last_dt).total_seconds())
+                    if age_sec < cooldown:
+                        raise HTTPException(
+                            status_code=429,
+                            detail=f"Too many requests. Try again in {cooldown - age_sec}s",
+                        )
+    # <<< v13
+
     # генерим номер талона
     ticket_no = await _next_ticket_no(db, station_id, fuel_type)
 
-    claim_code = secrets.token_hex(4).upper()  # 8 символов, например: "A1B2C3D4"
+    claim_code = secrets.token_hex(4).upper()  # 8 символов
 
-    # создаём талон
     t = QueueTicket(
         station_id=station_id,
         fuel_type=fuel_type,
         ticket_no=ticket_no,
         status="waiting",
-        driver_phone=(str(payload.get("driver_phone")).strip() if payload.get("driver_phone") else None),
-        driver_user_id=(int(payload["driver_user_id"]) if payload.get("driver_user_id") is not None else None),
+        driver_phone=driver_phone,
+        driver_user_id=driver_user_id,
         source=str(payload.get("source", "app")).strip().lower(),
         created_at=datetime.utcnow(),
         claim_code=claim_code,
@@ -119,15 +270,81 @@ async def join_queue(
 
     db.add(t)
 
-    # 🔑 КЛЮЧЕВО: flush → забираем id/поля → commit
-    await db.flush()
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        # Если одновременно прилетели два join — база могла зарубить уникальность
+        await db.rollback()
 
-    ticket_id = t.id
-    ticket_no_out = t.ticket_no
-    status_out = t.status
-    source_out = t.source
+        # 1) Сначала попробуем вернуть существующий активный талон (v12-логика)
+        active_statuses = ["waiting", "called", "fueling"]
 
-    await db.commit()
+        if driver_user_id is not None:
+            stmt = (
+                select(QueueTicket)
+                .where(
+                    QueueTicket.station_id == station_id,
+                    QueueTicket.driver_user_id == driver_user_id,
+                    QueueTicket.status.in_(active_statuses),
+                )
+                .order_by(QueueTicket.id.desc())
+                .limit(1)
+            )
+            res = await db.execute(stmt)
+            exist = res.scalars().first()
+            if exist:
+                return {
+                    "ok": True,
+                    "already_exists": True,
+                    "id": exist.id,
+                    "ticket_no": exist.ticket_no,
+                    "status": exist.status,
+                    "claim_code": exist.claim_code,
+                }
+
+        if driver_user_id is None and driver_phone:
+            stmt = (
+                select(QueueTicket)
+                .where(
+                    QueueTicket.station_id == station_id,
+                    QueueTicket.driver_phone == driver_phone,
+                    QueueTicket.status.in_(active_statuses),
+                )
+                .order_by(QueueTicket.id.desc())
+                .limit(1)
+            )
+            res = await db.execute(stmt)
+            exist = res.scalars().first()
+            if exist:
+                return {
+                    "ok": True,
+                    "already_exists": True,
+                    "id": exist.id,
+                    "ticket_no": exist.ticket_no,
+                    "status": exist.status,
+                    "claim_code": exist.claim_code,
+                }
+
+        # 2) Если вдруг не нашли — пробуем создать новый талон повторно (очень редко)
+        # Перегенерим ticket_no/claim_code и попробуем ещё раз
+        ticket_no = await _next_ticket_no(db, station_id, fuel_type)
+        claim_code = secrets.token_hex(4).upper()
+
+        t = QueueTicket(
+            station_id=station_id,
+            fuel_type=fuel_type,
+            ticket_no=ticket_no,
+            status="waiting",
+            driver_phone=driver_phone,
+            driver_user_id=driver_user_id,
+            source=str(payload.get("source", "app")).strip().lower(),
+            created_at=datetime.utcnow(),
+            claim_code=claim_code,
+        )
+        db.add(t)
+        await db.flush()
+        await db.commit()
 
     # audit (join может быть без авторизации — user=None ок)
     try:
@@ -141,10 +358,11 @@ async def join_queue(
             meta={"ticket_no": ticket_no_out, "fuel_type": fuel_type, "source": source_out},
         )
     except Exception:
-        # аудит не должен ломать join
         pass
 
     return {
+        "ok": True,
+        "already_exists": False,
         "id": t.id,
         "ticket_no": t.ticket_no,
         "status": t.status,
@@ -154,127 +372,206 @@ async def join_queue(
 
 
 @router.get("/panel", response_model=dict)
-async def queue_panel(
+async def panel(
     station_id: int = Query(...),
-    fuel_type: Optional[str] = Query(default=None),
+    fuel_type: str | None = Query(None, description="Filter waiting list by fuel_type"),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
 ):
     station = await db.get(Station, station_id)
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
-    ft = fuel_type.strip().lower() if fuel_type else None
-
-    # 1) BUSY = сколько талонов сейчас "занимают колонку"
-    # (called + fueling)
-    stmt_busy = select(func.count()).select_from(QueueTicket).where(
-        QueueTicket.station_id == station_id,
-        QueueTicket.status.in_(["called", "fueling"]),
-    )
-    if ft:
-        stmt_busy = stmt_busy.where(QueueTicket.fuel_type == ft)
-
-    pumps_busy = (await db.execute(stmt_busy)).scalar_one()
     pumps_total = int(getattr(station, "pumps_count", 1) or 1)
-    pumps_free = max(pumps_total - pumps_busy, 0)
-    can_call_next = pumps_free > 0
+    ft = fuel_type.strip().lower() if fuel_type else None
+    service_min = int(getattr(settings, "AVG_SERVICE_MINUTES", 5) or 5)
 
-    # 2) NEXT ticket (первый waiting)
-    stmt_next = select(QueueTicket).where(
+    # 1) Активные талоны на колонках (called/fueling)
+    stmt_active = (
+        select(QueueTicket)
+        .where(
+            QueueTicket.station_id == station_id,
+            QueueTicket.status.in_(["called", "fueling"]),
+        )
+        .order_by(QueueTicket.pump_no.asc().nulls_last(), QueueTicket.called_at.asc().nulls_last())
+    )
+    res_active = await db.execute(stmt_active)
+    active = res_active.scalars().all()
+
+    active_by_pump: dict[int, dict] = {}
+    for t in active:
+        if t.pump_no:
+            active_by_pump[int(t.pump_no)] = {
+                "ticket_id": t.id,
+                "ticket_no": t.ticket_no,
+                "status": t.status,
+                "fuel_type": t.fuel_type,
+                "called_at": t.called_at.isoformat() if t.called_at else None,
+                "check_in_at": t.check_in_at.isoformat() if t.check_in_at else None,
+            }
+
+    pumps = []
+    for p in range(1, pumps_total + 1):
+        pumps.append({"pump_no": p, "current": active_by_pump.get(p)})
+
+    # 2) Waiting list
+    conds = [
         QueueTicket.station_id == station_id,
         QueueTicket.status == "waiting",
-    )
+    ]
     if ft:
-        stmt_next = stmt_next.where(QueueTicket.fuel_type == ft)
+        conds.append(QueueTicket.fuel_type == ft)
 
-    res_next = await db.execute(stmt_next.order_by(QueueTicket.created_at.asc()).limit(1))
-    next_t = res_next.scalars().first()
-
-    # 3) CALLED list (called + fueling)
-    stmt_called = select(QueueTicket).where(
-        QueueTicket.station_id == station_id,
-        QueueTicket.status.in_(["called", "fueling"]),
+    stmt_waiting = (
+        select(QueueTicket)
+        .where(*conds)
+        .order_by(QueueTicket.created_at.asc())
+        .limit(200)
     )
-    if ft:
-        stmt_called = stmt_called.where(QueueTicket.fuel_type == ft)
+    res_waiting = await db.execute(stmt_waiting)
+    waiting = res_waiting.scalars().all()
 
-    res_called = await db.execute(stmt_called.order_by(QueueTicket.called_at.desc().nullslast()).limit(20))
-    called_items = res_called.scalars().all()
+    waiting_out = []
+    for i, t in enumerate(waiting, start=1):
+        cars_ahead = i - 1
+        eta_min = ceil(cars_ahead / max(pumps_total, 1)) * service_min
 
-    # 4) WAITING list
-    stmt_waiting = select(QueueTicket).where(
-        QueueTicket.station_id == station_id,
-        QueueTicket.status == "waiting",
+        waiting_out.append(
+            {
+                "position": i,
+                "cars_ahead": cars_ahead,
+                "eta_min": eta_min,
+                "ticket_id": t.id,
+                "ticket_no": t.ticket_no,
+                "fuel_type": t.fuel_type,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+        )
+
+    # 3) Stats
+    stmt_stats = (
+        select(QueueTicket.status, func.count())
+        .where(QueueTicket.station_id == station_id)
+        .group_by(QueueTicket.status)
     )
-    if ft:
-        stmt_waiting = stmt_waiting.where(QueueTicket.fuel_type == ft)
+    res_stats = await db.execute(stmt_stats)
+    stats = {row[0]: int(row[1]) for row in res_stats.all()}
 
-    res_waiting = await db.execute(stmt_waiting.order_by(QueueTicket.created_at.asc()).limit(50))
-    waiting_items = res_waiting.scalars().all()
+    stmt_ft = (
+        select(QueueTicket.fuel_type, func.count())
+        .where(
+            QueueTicket.station_id == station_id,
+            QueueTicket.status == "waiting",
+        )
+        .group_by(QueueTicket.fuel_type)
+    )
+    res_ft = await db.execute(stmt_ft)
+    fuel_types = [{"fuel_type": r[0], "waiting": int(r[1])} for r in res_ft.all()]
 
     return {
+        "fuel_filter": ft,
+        "fuel_types": fuel_types,
         "station_id": station_id,
-        "fuel_type": fuel_type,
         "pumps_total": pumps_total,
-        "pumps_busy": pumps_busy,
-        "pumps_free": pumps_free,
-        "can_call_next": can_call_next,
-        "next_ticket": (
-            {
-                "id": next_t.id,
-                "ticket_no": next_t.ticket_no,
-                "fuel_type": next_t.fuel_type,
-                "created_at": next_t.created_at.isoformat(),
-            }
-            if next_t and can_call_next
-            else None
-        ),
-        "called": [
-            {
-                "id": t.id,
-                "ticket_no": t.ticket_no,
-                "status": t.status,
-                "called_at": t.called_at.isoformat() if t.called_at else None,
-            }
-            for t in called_items
-        ],
-        "waiting": [
-            {
-                "id": t.id,
-                "ticket_no": t.ticket_no,
-                "status": t.status,
-                "created_at": t.created_at.isoformat(),
-                "driver_phone_masked": _mask_phone(getattr(t, "driver_phone", None)),
-            }
-            for t in waiting_items
-        ],
-        "waiting_count": len(waiting_items),
-    }
+        "pumps": pumps,
+        "waiting": waiting_out,
+        "stats": stats,
+        "settings": {"no_show_minutes": int(settings.NO_SHOW_MINUTES)},
+
+        }
+
+async def auto_no_show_cleanup(station_id: int, db: AsyncSession) -> int:
+    """
+    Автоматически отменяет талоны, которые были вызваны (called),
+    но водитель не начал обслуживание слишком долго.
+    Возвращает сколько талонов отменили.
+
+    Правило:
+      - отменяем только если status == "called"
+      - called_at есть и достаточно старый
+      - check_in_at == None (если водитель уже check-in — НЕ отменяем)
+    """
+    now = datetime.utcnow()
+    threshold = now - timedelta(minutes=int(settings.NO_SHOW_MINUTES))
+
+    stmt = select(QueueTicket).where(
+        QueueTicket.station_id == station_id,
+        QueueTicket.status == "called",
+        QueueTicket.called_at.is_not(None),
+        QueueTicket.called_at < threshold,
+        QueueTicket.check_in_at.is_(None),   # ключевая защита
+    )
+
+    res = await db.execute(stmt)
+    tickets = res.scalars().all()
+
+    for t in tickets:
+        freed_pump = getattr(t, "pump_no", None)
+
+        # отменяем
+        t.status = "cancelled"
+        if hasattr(t, "cancel_reason"):
+            t.cancel_reason = "no_show"
+        if hasattr(t, "cancelled_at"):
+            t.cancelled_at = now
+
+        # освобождаем колонку
+        if hasattr(t, "pump_no"):
+            t.pump_no = None
+
+        db.add(
+            Notification(
+                station_id=t.station_id,
+                ticket_id=t.id,
+                type="ticket_cancelled",
+                message=(
+                    f"Талон {t.ticket_no}: отменён (no_show)"
+                    + (f", колонка №{freed_pump} освобождена" if freed_pump else "")
+                ),
+            )
+        )
+
+    # ВАЖНО: commit НЕ здесь (его делает no_show_loop)
+    return len(tickets)
 
 @router.post("/call-next", response_model=dict)
 async def call_next_ticket(
     station_id: int = Query(..., description="ID станции"),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
 ):
+    """
+    Оператор вызывает следующего водителя:
+    - проверяем свободные колонки
+    - берём первый waiting талон
+    - ставим status=called, called_at=now, pump_no=свободная колонка
+    - пишем Notification
+    """
+
     station = await db.get(Station, station_id)
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
     pumps_total = int(getattr(station, "pumps_count", 1) or 1)
 
-    # Сколько сейчас реально занято (fueling)
-    stmt_busy = select(func.count()).select_from(QueueTicket).where(
+    # какие колонки заняты
+    stmt_busy = select(QueueTicket.pump_no).where(
         QueueTicket.station_id == station_id,
-        QueueTicket.status == "fueling",
+        QueueTicket.status.in_(["called", "fueling"]),
+        QueueTicket.pump_no.is_not(None),
     )
-    pumps_busy = int((await db.execute(stmt_busy)).scalar() or 0)
+    res_busy = await db.execute(stmt_busy)
+    busy_pumps = {row[0] for row in res_busy.all() if row[0] is not None}
 
-    if pumps_busy >= pumps_total:
-        # 409 = конфликт состояния (нельзя вызывать)
-        raise HTTPException(status_code=409, detail="All pumps are busy. Finish fueling first.")
+    all_pumps = set(range(1, pumps_total + 1))
+    free_pumps = sorted(list(all_pumps - busy_pumps))
 
-    # Ищем первый waiting
-    stmt = (
+    if not free_pumps:
+        raise HTTPException(status_code=409, detail="Нет свободных колонок")
+
+    pump_no = free_pumps[0]
+
+    stmt_next = (
         select(QueueTicket)
         .where(
             QueueTicket.station_id == station_id,
@@ -283,7 +580,7 @@ async def call_next_ticket(
         .order_by(QueueTicket.created_at.asc())
         .limit(1)
     )
-    res = await db.execute(stmt)
+    res = await db.execute(stmt_next)
     t = res.scalars().first()
 
     if not t:
@@ -292,12 +589,13 @@ async def call_next_ticket(
     now = datetime.utcnow()
     t.status = "called"
     t.called_at = now
+    t.pump_no = pump_no
 
     note = Notification(
         station_id=t.station_id,
         ticket_id=t.id,
         type="operator_called",
-        message=f"Талон {t.ticket_no}: подъезжайте к колонке",
+        message=f"Талон {t.ticket_no}: подъезжайте к колонке №{pump_no}",
     )
     db.add(note)
 
@@ -310,10 +608,8 @@ async def call_next_ticket(
         "ticket_id": t.id,
         "ticket_no": t.ticket_no,
         "status": t.status,
+        "pump_no": t.pump_no,
         "called_at": t.called_at.isoformat() if t.called_at else None,
-        "pumps_total": pumps_total,
-        "pumps_busy": pumps_busy,
-        "pumps_free": max(pumps_total - pumps_busy, 0),
     }
 
 def _mask_phone(phone: str | None) -> str | None:
@@ -353,7 +649,135 @@ async def optional_user(request: Request):
     # дальше — как у тебя принято: достаем user_id, грузим user из БД и т.д.
     return payload  # или user
 
+@router.post("/start-fueling", response_model=dict)
+async def start_fueling(
+    ticket_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
+):
+    """
+    Начать обслуживание:
+    - called -> fueling
+    """
+    t = await db.get(QueueTicket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
 
+    if t.status != "called":
+        raise HTTPException(status_code=400, detail=f"Cannot start fueling from status={t.status}")
+
+    now = datetime.utcnow()
+    t.status = "fueling"
+    # можно сохранить факт начала обслуживания (если хочешь) — пока без новых колонок
+
+    note = Notification(
+        station_id=t.station_id,
+        ticket_id=t.id,
+        type="ticket_fueling",
+        message=f"Талон {t.ticket_no}: началось обслуживание (колонка №{t.pump_no})" if t.pump_no else f"Талон {t.ticket_no}: началось обслуживание",
+    )
+    db.add(note)
+
+    await db.commit()
+    await db.refresh(t)
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "pump_no": t.pump_no,
+    }
+
+@router.post("/done", response_model=dict)
+async def finish_ticket(
+    ticket_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
+):
+    """
+    Завершить обслуживание:
+    - fueling -> done
+    Освобождаем колонку (pump_no = None)
+    """
+    t = await db.get(QueueTicket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if t.status != "fueling":
+        raise HTTPException(status_code=400, detail=f"Cannot finish from status={t.status}")
+
+    now = datetime.utcnow()
+    t.status = "done"
+    t.done_at = now
+
+    released_pump = t.pump_no
+    t.pump_no = None
+
+    note = Notification(
+        station_id=t.station_id,
+        ticket_id=t.id,
+        type="ticket_done",
+        message=f"Талон {t.ticket_no}: обслуживание завершено" + (f", колонка №{released_pump} свободна" if released_pump else ""),
+    )
+    db.add(note)
+
+    await db.commit()
+    await db.refresh(t)
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "done_at": t.done_at.isoformat() if t.done_at else None,
+        "released_pump": released_pump,
+    }
+
+@router.post("/recall", response_model=dict)
+async def recall_ticket(
+    ticket_id: int = Query(..., description="ID талона"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
+):
+    """
+    Перевызов водителя на ту же колонку.
+    Разрешено только если статус=called и есть pump_no.
+    """
+    t = await db.get(QueueTicket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if t.status != "called":
+        raise HTTPException(status_code=400, detail=f"Cannot recall from status={t.status}")
+
+    if not getattr(t, "pump_no", None):
+        raise HTTPException(status_code=400, detail="Ticket has no pump_no")
+
+    now = datetime.utcnow()
+    # Статус не меняем, но можно обновить called_at как "последний вызов"
+    t.called_at = now
+
+    db.add(
+        Notification(
+            station_id=t.station_id,
+            ticket_id=t.id,
+            type="operator_recall",
+            message=f"Талон {t.ticket_no}: повторный вызов к колонке №{t.pump_no}",
+        )
+    )
+
+    await db.commit()
+    await db.refresh(t)
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "pump_no": t.pump_no,
+        "called_at": t.called_at.isoformat() if t.called_at else None,
+    }
 
 @router.post("/check-in", response_model=dict)
 async def check_in(
@@ -468,8 +892,6 @@ async def set_ticket_status(
         "status": status_out,
     }
 
-
-
 @router.get("/stats", response_model=dict)
 async def queue_stats(
     station_id: int = Query(...),
@@ -534,78 +956,26 @@ async def last_called(
     return {"ok": True, "ticket": {"id": t.id, "ticket_no": t.ticket_no}}
 
 
-@router.post("/start-fueling", response_model=dict)
-async def start_fueling(
-    ticket_id: int = Query(..., description="ID талона"),
-    db: AsyncSession = Depends(get_db),
-):
-    t = await db.get(QueueTicket, ticket_id)
-    if not t:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    if t.status != "called":
-        raise HTTPException(status_code=400, detail=f"Cannot start fueling from status={t.status}")
-
-    # 0) Станция и количество колонок
-    station = await db.get(Station, t.station_id)
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
-
-    pumps_count = int(station.pumps_count or 1)
-
-    # 1) Сколько сейчас уже обслуживаются (fueling)
-    fueling_count = await db.scalar(
-        select(func.count()).select_from(QueueTicket).where(
-            QueueTicket.station_id == t.station_id,
-            QueueTicket.status == "fueling",
-        )
-    )
-    fueling_count = int(fueling_count or 0)
-
-    if fueling_count >= pumps_count:
-        raise HTTPException(
-            status_code=409,
-            detail=f"No free pumps: fueling={fueling_count}, pumps_count={pumps_count}",
-        )
-
-    now = datetime.utcnow()
-    t.status = "fueling"
-
-    note = Notification(
-        station_id=t.station_id,
-        ticket_id=t.id,
-        type="fueling_started",
-        message=f"Талон {t.ticket_no}: началось обслуживание",
-    )
-    db.add(note)
-
-    await db.commit()
-    await db.refresh(t)
-
-    return {
-        "ok": True,
-        "ticket_id": t.id,
-        "ticket_no": t.ticket_no,
-        "status": t.status,
-        "started_at": now.isoformat(),
-    }
-
-
 @router.post("/finish", response_model=dict)
 async def finish_ticket(
     ticket_id: int = Query(..., description="ID талона"),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
 ):
     t = await db.get(QueueTicket, ticket_id)
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    if t.status not in ("fueling", "called"):
+    if t.status not in ["called", "fueling"]:
         raise HTTPException(status_code=400, detail=f"Cannot finish from status={t.status}")
 
     now = datetime.utcnow()
     t.status = "done"
     t.done_at = now
+
+    # освобождаем колонку
+    finished_pump = t.pump_no
+    t.pump_no = None
 
     note = Notification(
         station_id=t.station_id,
@@ -618,9 +988,124 @@ async def finish_ticket(
     await db.commit()
     await db.refresh(t)
 
-    return {"ok": True, "ticket_id": t.id, "ticket_no": t.ticket_no, "status": t.status, "done_at": now.isoformat()}
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "freed_pump_no": finished_pump,
+        "done_at": t.done_at.isoformat() if t.done_at else None,
+    }
 
+@router.post("/cancel", response_model=dict)
+async def cancel_ticket(
+    ticket_id: int = Query(..., description="ID талона"),
+    reason: str = Query(default="driver", description="Причина: driver / other"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
+):
+    """
+    Отмена талона (обычно со стороны водителя):
+    - waiting/called -> cancelled
+    - если был called -> освобождаем колонку
+    - пишем Notification
+    """
+    t = await db.get(QueueTicket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
 
+    if t.status not in ("waiting", "called"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel from status={t.status}")
+
+    old_pump = getattr(t, "pump_no", None)
+
+    t.status = "cancelled"
+    t.pump_no = None  # освобождаем колонку, если была назначена
+
+    db.add(
+        Notification(
+            station_id=t.station_id,
+            ticket_id=t.id,
+            type="ticket_cancelled",
+            message=f"Талон {t.ticket_no}: отменён ({reason})",
+        )
+    )
+
+    await db.commit()
+    await db.refresh(t)
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "freed_pump_no": old_pump,
+        "reason": reason,
+    }
+
+@router.post("/no-show", response_model=dict)
+async def no_show(
+    ticket_id: int = Query(..., description="ID талона"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("operator", "owner", "admin")),
+):
+    """
+    Водитель не приехал после вызова:
+    - разрешено только если status=called
+    - если check_in_at уже есть -> запрещаем (чтобы не отменить после check-in)
+    - status -> cancelled
+    - cancel_reason = no_show (если поле есть)
+    - cancelled_at = now (если поле есть)
+    - освобождаем колонку (pump_no -> None)
+    - пишем Notification
+    """
+    t = await db.get(QueueTicket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if t.status != "called":
+        raise HTTPException(status_code=400, detail=f"Cannot no-show from status={t.status}")
+
+    # защита: если уже check-in, то no-show запрещён
+    if getattr(t, "check_in_at", None) is not None:
+        raise HTTPException(status_code=400, detail="Cannot no-show after check-in")
+
+    old_pump = getattr(t, "pump_no", None)
+    now = datetime.utcnow()
+
+    t.status = "cancelled"
+    if hasattr(t, "cancel_reason"):
+        t.cancel_reason = "no_show"
+    if hasattr(t, "cancelled_at"):
+        t.cancelled_at = now
+
+    if hasattr(t, "pump_no"):
+        t.pump_no = None
+
+    db.add(
+        Notification(
+            station_id=t.station_id,
+            ticket_id=t.id,
+            type="ticket_cancelled",
+            message=(
+                f"Талон {t.ticket_no}: отменён (no_show)"
+                + (f", колонка №{old_pump} освобождена" if old_pump else "")
+            ),
+        )
+    )
+
+    await db.commit()
+    await db.refresh(t)
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "status": t.status,
+        "freed_pump_no": old_pump,
+        "cancel_reason": getattr(t, "cancel_reason", None),
+        "cancelled_at": getattr(t, "cancelled_at", None).isoformat() if getattr(t, "cancelled_at", None) else None,
+    }
 
 @router.get("/ticket/{ticket_id}", response_model=dict)
 async def get_ticket(
@@ -656,9 +1141,6 @@ async def get_ticket(
         "driver_phone_masked": _mask_phone(getattr(t, "driver_phone", None)),
         "source": getattr(t, "source", None),
     }
-
-from math import ceil
-from sqlalchemy import select, func
 
 
 @router.get("/ticket/{ticket_id}/eta", response_model=dict)

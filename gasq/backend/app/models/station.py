@@ -42,7 +42,7 @@ class Station(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Связи (таблицы добавим дальше)
-    #pumps = relationship("Pump", back_populates="station", cascade="all, delete-orphan")
-    #queue_tickets = relationship("QueueTicket", back_populates="station", cascade="all, delete-orphan")
-    #ratings = relationship("Rating", back_populates="station", cascade="all, delete-orphan")
-    #reservations = relationship("Reservation", back_populates="station", cascade="all, delete-orphan")
+    pumps = relationship("Pump", back_populates="station", cascade="all, delete-orphan")
+    queue_tickets = relationship("QueueTicket", back_populates="station", cascade="all, delete-orphan")
+    ratings = relationship("Rating", back_populates="station", cascade="all, delete-orphan")
+    reservations = relationship("Reservation", back_populates="station", cascade="all, delete-orphan")

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Если где-то в проекте используются такие настройки — они тоже безопасны:
     DEFAULT_PAGE_SIZE: int = 50
     MAX_PAGE_SIZE: int = 200
+    NO_SHOW_MINUTES: int = 3  # для теста. потом можно 5-7
+    AVG_SERVICE_MINUTES: int = 5
+    JOIN_COOLDOWN_SECONDS: int = 10
 
     if PYDANTIC_V2:
         model_config = SettingsConfigDict(

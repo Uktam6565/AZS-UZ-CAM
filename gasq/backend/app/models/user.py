@@ -1,15 +1,21 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime
-from app.db.session import Base
+from sqlalchemy import DateTime, Integer, String, Boolean
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base_class import Base
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)  # admin | operator
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    phone: Mapped[str] = mapped_column(String(30), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # roles: driver / operator / owner / admin
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="driver", index=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

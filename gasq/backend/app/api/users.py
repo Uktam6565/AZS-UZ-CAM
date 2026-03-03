@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +17,16 @@ async def list_users(
 ):
     res = await db.execute(select(User).order_by(User.id.asc()))
     users = res.scalars().all()
-    return [{"id": u.id, "username": u.username, "role": u.role} for u in users]
+    return [
+        {
+            "id": u.id,
+            "phone": u.phone,
+            "role": u.role,
+            "is_active": u.is_active,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in users
+    ]
 
 
 @router.post("", response_model=dict)
@@ -29,27 +36,26 @@ async def create_user(
     _=Depends(require_role("admin")),
 ):
     """
-    payload: { username, password, role }
-    role: admin/operator/viewer
+    payload: { phone, password, role }
+    role: driver/operator/owner/admin
     """
-    username = str(payload.get("username", "")).strip()
+    phone = str(payload.get("phone", "")).strip()
     password = str(payload.get("password", "")).strip()
-    role = str(payload.get("role", "viewer")).strip().lower()
+    role = str(payload.get("role", "driver")).strip().lower()
 
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="username and password required")
+    if not phone or not password:
+        raise HTTPException(status_code=400, detail="phone and password required")
 
-    if role not in ("admin", "operator", "viewer"):
+    if role not in ("driver", "operator", "owner", "admin"):
         raise HTTPException(status_code=400, detail="invalid role")
 
-    # uniqueness
-    res = await db.execute(select(User).where(User.username == username))
-    exists = res.scalar_one_or_none()
+    res = await db.execute(select(User).where(User.phone == phone))
+    exists = res.scalars().first()
     if exists:
-        raise HTTPException(status_code=400, detail="username already exists")
+        raise HTTPException(status_code=400, detail="phone already exists")
 
     u = User(
-        username=username,
+        phone=phone,
         password_hash=hash_password(password),
         role=role,
         is_active=True,
@@ -57,7 +63,8 @@ async def create_user(
     db.add(u)
     await db.commit()
     await db.refresh(u)
-    return {"ok": True, "id": u.id, "username": u.username, "role": u.role}
+
+    return {"ok": True, "id": u.id, "phone": u.phone, "role": u.role}
 
 
 @router.patch("/{user_id}/role", response_model=dict)
@@ -68,7 +75,7 @@ async def set_role(
     _=Depends(require_role("admin")),
 ):
     role = str(payload.get("role", "")).strip().lower()
-    if role not in ("admin", "operator", "viewer"):
+    if role not in ("driver", "operator", "owner", "admin"):
         raise HTTPException(status_code=400, detail="invalid role")
 
     u = await db.get(User, user_id)

@@ -3,14 +3,17 @@ from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.core.lifespan import lifespan
 
 from app.api.router import api_router
 from app.db.engine import engine
 from app.db.base import Base
+from app.api.auth import router as auth_router
 
 app = FastAPI(
     title="GasQ - Queue & Station Management",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS — берём из .env (CORS_ORIGINS)
@@ -48,7 +51,10 @@ async def global_exception_handler(request, exc: Exception):
 
 @app.on_event("startup")
 async def on_startup():
+    # Проверка БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # optional ping
         await conn.execute(text("SELECT 1"))
+
+
+

@@ -1,3 +1,8 @@
-# app/models/__init__.py
-# (оставляем пустым, чтобы не было круговых импортов)
-from app.models.notification import Notification  # noqa: F401
+from .station import Station
+from .queue import QueueTicket
+from .notification import Notification
+from .pump import Pump
+from .user import User
+from .rating import Rating
+from .reservation import Reservation
+#from .audit import Audit

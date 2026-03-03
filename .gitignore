@@ -3,17 +3,17 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
-.venv/
-venv/
 *.log
 
-# Project virtualenv inside repo
-gasq/backend/.venv/
+# Env files (secrets)
+.env
+.env.*
+!*.env.example
+
+# Virtualenv
 .venv/
 venv/
-__pycache__/
-*.pyc
+gasq/backend/.venv/
 
 # Node / frontend
 node_modules/
@@ -28,24 +28,7 @@ backups/
 gasq/backups/
 *.zip
 
-# OS
+# OS / editor
 .DS_Store
 Thumbs.db
 
-# ENV files
-.env
-**/.env
-
-PROJECT_STATE.md
-PROJECT_STATE.md/
-
-# Python cache
-**/__pycache__/
-**/*.pyc
-
-# Env files (секреты)
-gasq/backend/.env
-gasq/backend/.env.production
-
-# Local backups
-gasq/backups/

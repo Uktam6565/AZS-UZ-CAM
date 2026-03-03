@@ -38,3 +38,14 @@ Thumbs.db
 
 PROJECT_STATE.md
 PROJECT_STATE.md/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+
+# Env files (секреты)
+gasq/backend/.env
+gasq/backend/.env.production
+
+# Local backups
+gasq/backups/

@@ -1,0 +1,40 @@
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: gasq-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gasq
+      POSTGRES_USER: gasq
+      POSTGRES_PASSWORD: gasq
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./gasq/backend
+      dockerfile: Dockerfile
+    container_name: gasq-backend-prod
+    restart: unless-stopped
+    env_file:
+      - ./gasq/backend/.env.production
+    depends_on:
+      - postgres
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: gasq-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./gasq/frontend:/usr/share/nginx/html:ro
+      - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  pg_data:

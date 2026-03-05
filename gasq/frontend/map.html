@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GasQ — Карта АЗС</title>
+
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; }
+
+    .topbar {
+      position: absolute;
+      z-index: 999;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.95);
+      padding: 10px 12px;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      max-width: 340px;
+    }
+    .topbar small { color: #555; display:block; margin-top: 6px; }
+    .btn {
+      display:inline-block;
+      margin-top:8px;
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid #ddd;
+      background:#fff;
+      cursor:pointer;
+    }
+    .hint { font-size: 12px; color: #666; margin-top: 6px; }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <b>GasQ — Карта АЗС</b>
+    <small id="status">Загрузка…</small>
+    <div class="hint">🟢 0–3 | 🟡 4–7 | 🔴 8+</div>
+    <button class="btn" id="reloadBtn">Обновить</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script>
+    const samarkand = [39.6542, 66.9597];
+
+    const map = L.map("map").setView(samarkand, 13);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const markersLayer = L.layerGroup().addTo(map);
+
+    // Храним маркеры по station_id, чтобы обновлять popup/иконку без пересоздания
+    const stationMarkers = new Map();
+
+    // Авто-обновление очереди
+    const REFRESH_MS = 10000;
+    let refreshTimer = null;
+
+    function setStatus(text) {
+      document.getElementById("status").textContent = text;
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function getColorByQueue(n) {
+      const q = Number(n || 0);
+      if (q >= 8) return "red";
+      if (q >= 4) return "orange";
+      return "green";
+    }
+
+    function makeDivIcon(queueCount) {
+      const color = getColorByQueue(queueCount);
+      const q = Number(queueCount || 0);
+
+      // Circle with number
+      const html = `
+        <div style="
+          width:34px;height:34px;border-radius:999px;
+          display:flex;align-items:center;justify-content:center;
+          border:2px solid #fff;
+          box-shadow:0 6px 14px rgba(0,0,0,0.18);
+          background:${color};
+          font-weight:700;
+          color:#fff;
+          font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+        ">${q}</div>
+      `;
+
+      return L.divIcon({
+        className: "",
+        html,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -16]
+      });
+    }
+
+    async function apiGetJson(url) {
+      let res;
+      try {
+        res = await fetch(url);
+      } catch (e) {
+        return { ok: false, status: 0, data: null };
+      }
+      let data = null;
+      try { data = await res.json(); } catch (e) {}
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    async function joinQueue(stationId, fuelType, driverPhone) {
+      const url = "/api/queue/join";
+      const payload = {
+        station_id: Number(stationId),
+        fuel_type: String(fuelType),
+        driver_phone: String(driverPhone)
+      };
+
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        alert("Ошибка сети: backend недоступен");
+        return null;
+      }
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = data?.error || data?.detail || `Ошибка: ${res.status}`;
+        alert(typeof msg === "string" ? msg : JSON.stringify(msg));
+        return null;
+      }
+
+      return data;
+    }
+
+    function buildPopupHtml(st, queueCount) {
+      const title = escapeHtml(st.name ?? "Station");
+      const address = escapeHtml(st.address ?? "");
+      const fuelsRaw = String(st.fuel_types ?? "");
+      const fuels = fuelsRaw.split(",").map(s => s.trim()).filter(Boolean);
+
+      const fuelOptions = fuels.length
+        ? fuels.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("")
+        : `<option value="gasoline">gasoline</option>`;
+
+      return `
+        <div style="min-width:270px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="font-weight:700;font-size:14px">${title}</div>
+            <div style="
+              padding:2px 8px;border-radius:999px;font-size:12px;
+              border:1px solid #ddd;background:#fff;color:#333
+            ">очередь: <b>${Number(queueCount||0)}</b></div>
+          </div>
+
+          <div style="color:#555;margin-top:2px">${address}</div>
+
+          <div style="margin-top:10px">
+            <div style="font-size:12px;color:#666;margin-bottom:4px">Топливо</div>
+            <select id="fuel-${st.id}" style="width:100%;padding:6px;border-radius:8px;border:1px solid #ddd">
+              ${fuelOptions}
+            </select>
+          </div>
+
+          <div style="margin-top:8px">
+            <div style="font-size:12px;color:#666;margin-bottom:4px">Телефон водителя</div>
+            <input id="phone-${st.id}" placeholder="+998901234567"
+                   style="width:100%;padding:6px;border-radius:8px;border:1px solid #ddd" />
+          </div>
+
+          <button id="btn-${st.id}"
+            style="margin-top:10px;width:100%;padding:8px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer">
+            Встать в очередь
+          </button>
+
+          <div id="msg-${st.id}" style="margin-top:8px;font-size:12px;color:#333"></div>
+
+          <div style="margin-top:8px;font-size:11px;color:#777">
+            ID: ${st.id}
+          </div>
+        </div>
+      `;
+    }
+
+    async function fetchQueueCount(stationId) {
+      const { ok, status, data } = await apiGetJson(`/api/queue/station/${stationId}/count`);
+      if (!ok) return { ok: false, status, queue: 0 };
+      return { ok: true, status, queue: Number(data?.queue || 0) };
+    }
+
+    async function createOrUpdateMarker(st) {
+      const stationId = st.id;
+
+      const qc = await fetchQueueCount(stationId);
+      const queueCount = qc.ok ? qc.queue : 0;
+
+      const existing = stationMarkers.get(stationId);
+
+      if (!existing) {
+        // первый раз создаём
+        const marker = L.marker([st.latitude, st.longitude], { icon: makeDivIcon(queueCount) })
+          .addTo(markersLayer);
+
+        marker.bindPopup(buildPopupHtml(st, queueCount));
+
+        marker.on("popupopen", () => {
+          const btn = document.getElementById(`btn-${stationId}`);
+          const msg = document.getElementById(`msg-${stationId}`);
+
+          btn.onclick = async () => {
+            msg.textContent = "Отправка…";
+            btn.disabled = true;
+
+            const fuel = document.getElementById(`fuel-${stationId}`).value;
+            const phone = document.getElementById(`phone-${stationId}`).value.trim();
+
+            if (!phone) {
+              msg.textContent = "Введите телефон, например +998901234567";
+              btn.disabled = false;
+              return;
+            }
+
+            const result = await joinQueue(stationId, fuel, phone);
+
+            if (result) {
+              const ticket = result.ticket_no ?? result.ticket_number ?? "ok";
+              const pos = result.position ?? "?";
+              msg.textContent = `✅ Готово. Ticket: ${ticket} (позиция: ${pos})`;
+
+              // сразу обновим очередь на маркере после успешного join
+              await refreshQueueForStation(stationId);
+            } else {
+              msg.textContent = "❌ Ошибка. Смотри alert.";
+            }
+
+            btn.disabled = false;
+          };
+        });
+
+        stationMarkers.set(stationId, { marker, station: st, queueCount });
+      } else {
+        // обновляем существующий
+        existing.station = st;
+        existing.queueCount = queueCount;
+        existing.marker.setLatLng([st.latitude, st.longitude]);
+        existing.marker.setIcon(makeDivIcon(queueCount));
+        existing.marker.setPopupContent(buildPopupHtml(st, queueCount));
+      }
+    }
+
+    async function refreshQueueForStation(stationId) {
+      const entry = stationMarkers.get(stationId);
+      if (!entry) return;
+
+      const qc = await fetchQueueCount(stationId);
+      const queueCount = qc.ok ? qc.queue : entry.queueCount;
+
+      entry.queueCount = queueCount;
+      entry.marker.setIcon(makeDivIcon(queueCount));
+      entry.marker.setPopupContent(buildPopupHtml(entry.station, queueCount));
+    }
+
+    async function loadStations() {
+      setStatus("Загрузка станций…");
+
+      const { ok, status, data } = await apiGetJson("/api/stations/stations");
+      if (!ok) {
+        setStatus(`Ошибка API stations: ${status || "network"}`);
+        return;
+      }
+
+      const stations = Array.isArray(data) ? data : (data.items || data.data || []);
+      if (!stations.length) {
+        setStatus("Станций нет. Создай Station 1 в Swagger.");
+        return;
+      }
+
+      // создаём/обновляем маркеры
+      for (const st of stations) {
+        await createOrUpdateMarker(st);
+      }
+
+      // fit bounds один раз (если ещё не двигали карту)
+      const latLngs = stations
+        .filter(s => typeof s.latitude === "number" && typeof s.longitude === "number")
+        .map(s => [s.latitude, s.longitude]);
+
+      if (latLngs.length >= 1 && !window.__gasq_bounds_set) {
+        window.__gasq_bounds_set = true;
+        const bounds = L.latLngBounds(latLngs);
+        map.fitBounds(bounds.pad(0.2));
+      }
+
+      setStatus(`Готово. Станций: ${stations.length} (обновление каждые ${Math.round(REFRESH_MS/1000)}с)`);
+    }
+
+    async function refreshAllQueues() {
+      const entries = Array.from(stationMarkers.keys());
+      for (const stationId of entries) {
+        await refreshQueueForStation(stationId);
+      }
+    }
+
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(async () => {
+        await refreshAllQueues();
+      }, REFRESH_MS);
+    }
+
+    document.getElementById("reloadBtn").addEventListener("click", async () => {
+      await loadStations();
+      await refreshAllQueues();
+    });
+
+    (async () => {
+      await loadStations();
+      await refreshAllQueues();
+      startAutoRefresh();
+    })();
+  </script>
+</body>
+</html>

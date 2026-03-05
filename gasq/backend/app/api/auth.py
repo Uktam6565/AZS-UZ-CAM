@@ -29,7 +29,7 @@ async def register(payload: dict, db: AsyncSession = Depends(get_db)):
     if q.scalars().first():
         raise HTTPException(status_code=409, detail="user already exists")
 
-    u = User(phone=phone, password_hash=hash_password(password), role=role)
+    u = User(phone=phone, password_hash=hash_password(password), role=role, is_active=True)
     db.add(u)
     await db.commit()
     await db.refresh(u)

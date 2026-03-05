@@ -1332,7 +1332,44 @@ async def active_tickets(
     fueling = fueling_res.scalars().all()
 
     return {
+            "station_id": station_id,
+   	    "called": [
+                  {
+                         "id": t.id,
+           		 "ticket_no": t.ticket_no,
+            		"fuel_type": t.fuel_type,
+            		"claim_code": t.claim_code,
+           	        "driver_phone": t.driver_phone,
+        	  }
+        	  for t in called
+    	  ],
+          "fueling": [
+       	         {
+                        "id": t.id,
+            		"ticket_no": t.ticket_no,
+            		"fuel_type": t.fuel_type,
+            		"claim_code": t.claim_code,
+            		"driver_phone": t.driver_phone,
+                    "pump_no": t.pump_no,
+        	}
+        	for t in fueling
+    	],
+}
+
+@router.get("/station/{station_id}/count")
+async def queue_count(station_id: int, db: AsyncSession = Depends(get_db)):
+    q = await db.execute(
+        select(func.count())
+        .select_from(QueueTicket)
+        .where(
+            QueueTicket.station_id == station_id,
+            QueueTicket.status.in_(["waiting", "called", "fueling"])
+        )
+    )
+
+    count = q.scalar() or 0
+
+    return {
         "station_id": station_id,
-        "called": [{"id": t.id, "ticket_no": t.ticket_no, "fuel_type": t.fuel_type} for t in called],
-        "fueling": [{"id": t.id, "ticket_no": t.ticket_no, "fuel_type": t.fuel_type} for t in fueling],
+        "queue": count
     }

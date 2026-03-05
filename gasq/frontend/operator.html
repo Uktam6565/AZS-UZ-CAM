@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GasQ — Operator Panel</title>
+  <style>
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:#f6f7fb;
+      color:#111;
+    }
+    .wrap{ max-width:1100px; margin:0 auto; padding:18px; }
+    .top{
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      background:#fff; padding:12px 14px; border-radius:14px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.06);
+    }
+    .top h1{ margin:0; font-size:18px; }
+    .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    input, button, select{
+      padding:10px 12px; border-radius:12px;
+      border:1px solid #e3e6ef; background:#fff;
+      font-size:14px;
+    }
+    button{ cursor:pointer; }
+    button.primary{ background:#111; color:#fff; border-color:#111; }
+    button:disabled{ opacity:0.6; cursor:not-allowed; }
+
+    .grid{
+      margin-top:14px;
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap:14px;
+    }
+    .card{
+      background:#fff; border-radius:14px; padding:12px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.06);
+      min-height: 220px;
+    }
+    .card h2{
+      margin:0 0 10px 0; font-size:14px; color:#333;
+      display:flex; justify-content:space-between;
+    }
+    .pill{
+      font-size:12px; padding:2px 8px; border-radius:999px;
+      border:1px solid #e3e6ef; color:#555;
+    }
+
+    .row{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:10px; border:1px solid #eef1f7; border-radius:12px;
+      margin-bottom:10px; gap:10px;
+    }
+    .left{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .ticket{ font-weight:700; }
+    .meta{ font-size:12px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    .actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .btn-mini{
+      padding:8px 10px; border-radius:12px; border:1px solid #e3e6ef; background:#fff;
+      font-size:13px;
+    }
+    .btn-green{ border-color:#0a7; color:#0a7; }
+    .btn-red{ border-color:#c22; color:#c22; }
+
+    .pump-select{
+      min-width:88px;
+      padding:8px 10px;
+      font-size:13px;
+      border-radius:10px;
+      border:1px solid #e3e6ef;
+      background:#fff;
+    }
+
+    .log{
+      margin-top:14px; background:#fff; border-radius:14px; padding:12px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.06);
+      font-size:13px; color:#333;
+    }
+    .log pre{ margin:0; white-space:pre-wrap; word-break:break-word; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>GasQ — Operator Panel</h1>
+      <div class="controls">
+        <label>
+          Station ID:
+          <input id="stationId" type="number" value="1" min="1" style="width:90px" />
+        </label>
+        <button id="refreshBtn">Refresh</button>
+        <button id="callNextBtn" class="primary">CALL NEXT</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>WAITING <span class="pill" id="waitingCount">0</span></h2>
+        <div id="waitingList"></div>
+      </div>
+
+      <div class="card">
+        <h2>CALLED <span class="pill" id="calledCount">0</span></h2>
+        <div id="calledList"></div>
+      </div>
+
+      <div class="card">
+        <h2>FUELING <span class="pill" id="fuelingCount">0</span></h2>
+        <div id="fuelingList"></div>
+      </div>
+    </div>
+
+    <div class="log">
+      <b>Log</b>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+<script>
+  const els = {
+    stationId: document.getElementById("stationId"),
+    refreshBtn: document.getElementById("refreshBtn"),
+    callNextBtn: document.getElementById("callNextBtn"),
+    waitingList: document.getElementById("waitingList"),
+    calledList: document.getElementById("calledList"),
+    fuelingList: document.getElementById("fuelingList"),
+    waitingCount: document.getElementById("waitingCount"),
+    calledCount: document.getElementById("calledCount"),
+    fuelingCount: document.getElementById("fuelingCount"),
+    log: document.getElementById("log"),
+  };
+
+  function log(msg) {
+    const line = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+    els.log.textContent = line + els.log.textContent;
+  }
+
+  async function api(url, opts) {
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (e) {
+      log("NETWORK ERROR: backend недоступен");
+      return { ok:false, status:0, data:null };
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      const err = data?.error || data?.detail || `HTTP ${res.status}`;
+      log(`ERROR ${url}: ${typeof err === "string" ? err : JSON.stringify(err)}`);
+      return { ok:false, status:res.status, data };
+    }
+    return { ok:true, status:res.status, data };
+  }
+
+  function rowHtml(t, actionsHtml) {
+    const fuel = t.fuel_type ?? "";
+    const phone = t.driver_phone ?? "";
+    const created = t.created_at ? (" | " + String(t.created_at).replace("T"," ").slice(0,19)) : "";
+    return `
+      <div class="row">
+        <div class="left">
+          <div class="ticket">${t.ticket_no ?? ("#" + t.id)}</div>
+          <div class="meta">fuel: ${fuel}${phone ? " | " + phone : ""}${created}</div>
+        </div>
+        <div class="actions">${actionsHtml || ""}</div>
+      </div>
+    `;
+  }
+
+  function renderList(container, items, type) {
+    if (!items || !items.length) {
+      container.innerHTML = `<div class="meta">Пусто</div>`;
+      return;
+    }
+
+    if (type === "waiting") {
+      container.innerHTML = items.map(t =>
+        rowHtml(t, `
+          <button class="btn-mini btn-green" onclick="callTicket(${t.id})">CALL</button>
+        `)
+      ).join("");
+      return;
+    }
+
+    if (type === "called") {
+      container.innerHTML = items.map(t =>
+        rowHtml(t, `
+          <select class="pump-select" id="pump-${t.id}">
+            <option value="1">Pump 1</option>
+            <option value="2">Pump 2</option>
+            <option value="3">Pump 3</option>
+            <option value="4">Pump 4</option>
+          </select>
+          <button class="btn-mini btn-green" onclick="startTicket(${t.id})">START</button>
+        `)
+      ).join("");
+      return;
+    }
+
+    if (type === "fueling") {
+      container.innerHTML = items.map(t =>
+        rowHtml(t, `
+          <span class="meta">pump: ${t.pump_no ?? "-"}</span>
+          <button class="btn-mini btn-red" onclick="doneTicket(${t.id})">DONE</button>
+        `)
+      ).join("");
+      return;
+    }
+  }
+
+  async function refresh() {
+    const stationId = Number(els.stationId.value || 1);
+
+    els.refreshBtn.disabled = true;
+    els.callNextBtn.disabled = true;
+
+    const waitingRes = await api(`/api/operator/waiting?station_id=${stationId}`, { method:"GET" });
+    const waiting = waitingRes.ok ? (waitingRes.data.waiting || []) : [];
+
+    const active = await api(`/api/queue/active?station_id=${stationId}`, { method:"GET" });
+    const called = active.ok ? (active.data.called || []) : [];
+    const fueling = active.ok ? (active.data.fueling || []) : [];
+
+    els.waitingCount.textContent = String(waiting.length);
+    els.calledCount.textContent = String(called.length);
+    els.fuelingCount.textContent = String(fueling.length);
+
+    renderList(els.waitingList, waiting, "waiting");
+    renderList(els.calledList, called, "called");
+    renderList(els.fuelingList, fueling, "fueling");
+
+    els.refreshBtn.disabled = false;
+    els.callNextBtn.disabled = false;
+
+    log(`refresh station=${stationId}: waiting=${waiting.length}, called=${called.length}, fueling=${fueling.length}`);
+  }
+
+  async function callNext() {
+    const stationId = Number(els.stationId.value || 1);
+    els.callNextBtn.disabled = true;
+
+    const r = await api(`/api/operator/call-next?station_id=${stationId}`, { method:"POST" });
+    if (r.ok) log(`CALL NEXT -> ${r.data.ticket_no}`);
+
+    els.callNextBtn.disabled = false;
+    await refresh();
+  }
+
+  window.callTicket = async function(ticketId) {
+    const r = await api(`/api/operator/call?ticket_id=${ticketId}`, { method:"POST" });
+    if (r.ok) log(`CALL ticket_id=${ticketId}`);
+    await refresh();
+  };
+
+  window.startTicket = async function(ticketId) {
+    const pumpEl = document.getElementById(`pump-${ticketId}`);
+    const pumpNo = pumpEl ? Number(pumpEl.value || 1) : 1;
+
+    const r = await api(`/api/operator/start?ticket_id=${ticketId}&pump_no=${pumpNo}`, { method:"POST" });
+    if (r.ok) log(`START ticket_id=${ticketId} pump=${pumpNo}`);
+    await refresh();
+  };
+
+  window.doneTicket = async function(ticketId) {
+    const r = await api(`/api/operator/done?ticket_id=${ticketId}`, { method:"POST" });
+    if (r.ok) log(`DONE ticket_id=${ticketId}`);
+    await refresh();
+  };
+
+  els.refreshBtn.addEventListener("click", refresh);
+  els.callNextBtn.addEventListener("click", callNext);
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

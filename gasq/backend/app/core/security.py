@@ -8,11 +8,19 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pw = "" if password is None else str(password)
+    pw = pw.strip()
+
+    # DEBUG (временно): покажем длину пароля в байтах
+    print(f"[hash_password] len_bytes={len(pw.encode('utf-8'))} repr={pw!r}")
+
+    if len(pw.encode("utf-8")) > 72:
+        raise ValueError("Password too long (>72 bytes)")
+
+    return pwd_context.hash(pw)
 
 
 def verify_password(password: str, password_hash: str) -> bool:

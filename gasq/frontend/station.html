@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GasQ — Табло АЗС</title>
+
+  <style>
+    :root{
+      --bg1:#0b1220;
+      --bg2:#0f172a;
+      --card:#0b1220cc;
+      --card2:#111827cc;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --line:#1f2937;
+      --accent:#22c55e;
+      --accent2:#06b6d4;
+      --warn:#f59e0b;
+      --danger:#ef4444;
+      --shadow: 0 18px 50px rgba(0,0,0,.35);
+      --radius: 18px;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      background:
+        radial-gradient(1200px 600px at 20% 0%, rgba(34,197,94,.22), transparent 60%),
+        radial-gradient(900px 500px at 90% 10%, rgba(6,182,212,.18), transparent 55%),
+        linear-gradient(160deg, var(--bg1), var(--bg2));
+    }
+
+    header{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(11,18,32,.65);
+      border-bottom: 1px solid rgba(31,41,55,.7);
+    }
+    .header-inner{
+      max-width:1200px;
+      margin:0 auto;
+      padding:14px 18px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(34,197,94,.14);
+    }
+    .brand small{ color:var(--muted); font-weight:600; }
+    .meta{
+      margin-left:auto;
+      color:var(--muted);
+      font-size:12.5px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    main{
+      max-width:1200px;
+      margin:0 auto;
+      padding:18px;
+    }
+
+    .toolbar{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .pill{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid rgba(31,41,55,.8);
+      background: rgba(17,24,39,.55);
+      box-shadow: 0 10px 28px rgba(0,0,0,.18);
+    }
+    .pill label{ font-size:13px; color:var(--muted); }
+    .pill input{
+      width:92px;
+      border-radius:999px;
+      border:1px solid rgba(31,41,55,.9);
+      background: rgba(2,6,23,.55);
+      color:var(--text);
+      padding:8px 10px;
+      outline:none;
+    }
+    .btn{
+      border-radius:999px;
+      border:1px solid rgba(31,41,55,.9);
+      background: rgba(2,6,23,.45);
+      color:var(--text);
+      padding:10px 14px;
+      cursor:pointer;
+      transition:.15s ease;
+    }
+    .btn:hover{ transform: translateY(-1px); border-color: rgba(34,197,94,.55); }
+    .status{
+      margin-left:auto;
+      font-size:12.5px;
+      color:var(--muted);
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .status .led{
+      width:10px; height:10px; border-radius:999px;
+      background:#64748b;
+      box-shadow: 0 0 0 4px rgba(100,116,139,.14);
+    }
+    .status.ok .led{
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(34,197,94,.14);
+    }
+    .status.bad .led{
+      background: var(--danger);
+      box-shadow: 0 0 0 4px rgba(239,68,68,.14);
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:16px;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns:1fr; }
+      .status{ margin-left:0; width:100%; }
+    }
+
+    .card{
+      border-radius: var(--radius);
+      border:1px solid rgba(31,41,55,.8);
+      background: rgba(17,24,39,.45);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:14px 16px;
+      border-bottom:1px solid rgba(31,41,55,.75);
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .card-title{
+      font-weight:800;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .badge{
+      font-size:12px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid rgba(31,41,55,.85);
+      background: rgba(2,6,23,.35);
+      color: var(--text);
+    }
+    .badge.called{ border-color: rgba(34,197,94,.45); }
+    .badge.fuel{ border-color: rgba(6,182,212,.45); }
+    .card-body{ padding:14px; }
+
+    .list{ display:flex; flex-direction:column; gap:12px; }
+
+    .row{
+      display:grid;
+      grid-template-columns: 90px 1fr 190px;
+      gap:12px;
+      align-items:center;
+      padding:12px;
+      border-radius: 16px;
+      border:1px solid rgba(31,41,55,.75);
+      background: rgba(2,6,23,.28);
+    }
+    @media (max-width: 560px){
+      .row{ grid-template-columns: 1fr; }
+    }
+
+    .ticket{
+      font-size:22px;
+      font-weight:900;
+      letter-spacing:.5px;
+    }
+
+    .info{
+      color: var(--muted);
+      font-size:13px;
+      line-height:1.35;
+    }
+    .info b{ color: var(--text); }
+
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      color: var(--text);
+      opacity:.95;
+    }
+
+    .qr-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .qr{
+      width:160px;
+      height:160px;
+      border-radius:14px;
+      border:1px solid rgba(31,41,55,.8);
+      background: rgba(255,255,255,.92);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+    }
+    .qr canvas, .qr img{ max-width:100% !important; max-height:100% !important; }
+    .qr-label{
+      font-size:12px;
+      color: var(--muted);
+      text-align:center;
+    }
+    .qr-btn{
+      font-size:12px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid rgba(34,197,94,.45);
+      background: rgba(34,197,94,.12);
+      color: var(--text);
+      cursor:pointer;
+      transition:.15s ease;
+      white-space:nowrap;
+    }
+    .qr-btn:hover{ transform: translateY(-1px); }
+
+    .empty{
+      color: var(--muted);
+      padding:8px 4px;
+    }
+
+    .tagline{
+      margin-top:10px;
+      color: var(--muted);
+      font-size:12.5px;
+      padding:0 2px;
+    }
+
+    /* Fueling rows look slightly different */
+    .row.fueling{
+      border-color: rgba(6,182,212,.45);
+      background: rgba(6,182,212,.08);
+    }
+    .pump-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      margin-top:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(245,158,11,.55);
+      background: rgba(245,158,11,.10);
+      color: var(--text);
+      font-weight:800;
+      width: fit-content;
+    }
+    .pump-badge .n{
+      font-size:14px;
+      letter-spacing:.2px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <span class="dot"></span>
+        GasQ — Табло АЗС
+        <small>live</small>
+      </div>
+      <div class="meta" id="meta">—</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <div class="pill">
+        <label>Station ID</label>
+        <input id="stationId" type="number" min="1" value="1"/>
+      </div>
+      <button class="btn" id="btnRefresh">Refresh</button>
+
+      <div class="status" id="status">
+        <span class="led"></span>
+        <span id="statusText">—</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">
+            CALLED
+            <span class="badge called" id="countCalled">0</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="list" id="calledList"></div>
+          <div class="tagline">Водитель сканирует QR → открывается checkin.html с кодом (claim_code).</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">
+            FUELING
+            <span class="badge fuel" id="countFueling">0</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="list" id="fuelingList"></div>
+          <div class="tagline">Как только оператор нажмёт START и статус станет <b>fueling</b> — табло обновится само.</div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- QR library (CDN). Если нет интернета — скажи, дам локальный вариант. -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+  <script>
+    // === SETTINGS ===
+    const DEFAULT_STATION_ID = 1;
+    const REFRESH_MS = 2500; // чуть быстрее, выглядит "живее"
+
+    const elMeta = document.getElementById('meta');
+    const elStationId = document.getElementById('stationId');
+    const btnRefresh = document.getElementById('btnRefresh');
+
+    const calledList = document.getElementById('calledList');
+    const fuelingList = document.getElementById('fuelingList');
+
+    const countCalled = document.getElementById('countCalled');
+    const countFueling = document.getElementById('countFueling');
+
+    const statusEl = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+
+    elStationId.value = String(DEFAULT_STATION_ID);
+
+    function nowStr() {
+      const d = new Date();
+      return d.toLocaleString();
+    }
+
+    function safe(v) {
+      return (v === null || v === undefined) ? '' : String(v);
+    }
+
+    function clearNode(node) {
+      while (node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    function makeCheckinUrl(stationId, claimCode) {
+      const url = new URL(window.location.origin + "/checkin.html");
+      url.searchParams.set("station_id", String(stationId));
+      url.searchParams.set("claim_code", String(claimCode));
+      return url.toString();
+    }
+
+    function setStatus(ok, text) {
+      statusEl.classList.remove('ok', 'bad');
+      statusEl.classList.add(ok ? 'ok' : 'bad');
+      statusText.textContent = text;
+    }
+
+    function renderCalledRow(t, stationId) {
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      const ticket = document.createElement('div');
+      ticket.className = 'ticket';
+      ticket.textContent = safe(t.ticket_no || t.ticket || t.id);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+
+      const fuel = safe(t.fuel_type);
+      const phone = safe(t.driver_phone);
+      const code = safe(t.claim_code);
+
+      info.innerHTML = `
+        <div>Топливо: <b>${fuel || '—'}</b></div>
+        ${phone ? `<div>Тел: <span class="mono">${phone}</span></div>` : ``}
+        ${code ? `<div>Код: <span class="mono">${code}</span></div>` : `<div style="color:#fca5a5">Нет claim_code</div>`}
+      `;
+
+      const qrWrap = document.createElement('div');
+      qrWrap.className = 'qr-wrap';
+
+      const qrBox = document.createElement('div');
+      qrBox.className = 'qr';
+
+      if (code) {
+        const link = makeCheckinUrl(stationId, code);
+
+        const qrInner = document.createElement('div');
+        qrBox.appendChild(qrInner);
+
+        new QRCode(qrInner, {
+          text: link,
+          width: 150,
+          height: 150
+        });
+
+        const label = document.createElement('div');
+        label.className = 'qr-label';
+        label.textContent = 'Сканируйте QR для Check-in';
+
+        const openBtn = document.createElement('button');
+        openBtn.className = 'qr-btn';
+        openBtn.textContent = 'Открыть ссылку';
+        openBtn.addEventListener('click', () => window.open(link, '_blank'));
+
+        qrWrap.appendChild(qrBox);
+        qrWrap.appendChild(label);
+        qrWrap.appendChild(openBtn);
+      } else {
+        qrBox.textContent = 'NO CODE';
+        qrWrap.appendChild(qrBox);
+      }
+
+      row.appendChild(ticket);
+      row.appendChild(info);
+      row.appendChild(qrWrap);
+
+      return row;
+    }
+
+    function renderFuelingRow(t) {
+      const row = document.createElement('div');
+      row.className = 'row fueling';
+
+      const ticket = document.createElement('div');
+      ticket.className = 'ticket';
+      ticket.textContent = safe(t.ticket_no || t.ticket || t.id);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+
+      const fuel = safe(t.fuel_type);
+      const phone = safe(t.driver_phone);
+
+      // IMPORTANT:
+      // "Подходите к колонке №..." покажем, если API отдаёт pump_no.
+      // Если пока не отдаёт — строка просто не появится.
+      const pumpNo = t.pump_no ?? t.pump ?? null;
+
+      info.innerHTML = `
+        <div>Топливо: <b>${fuel || '—'}</b></div>
+        ${phone ? `<div>Тел: <span class="mono">${phone}</span></div>` : ``}
+      `;
+
+      if (pumpNo !== null && pumpNo !== undefined && String(pumpNo).trim() !== '') {
+        const pump = document.createElement('div');
+        pump.className = 'pump-badge';
+        pump.innerHTML = `Подходите к колонке <span class="n">№ ${safe(pumpNo)}</span>`;
+        info.appendChild(pump);
+      } else {
+        // Можно оставить подсказку, чтобы было понятно почему нет номера
+        const hint = document.createElement('div');
+        hint.style.marginTop = '8px';
+        hint.style.color = 'var(--muted)';
+        hint.style.fontSize = '12px';
+        hint.textContent = 'Номер колонки появится, когда оператор выберет колонку (pump_no).';
+        info.appendChild(hint);
+      }
+
+      const right = document.createElement('div');
+      right.className = 'qr-wrap';
+      const badge = document.createElement('div');
+      badge.className = 'qr';
+      badge.style.background = 'rgba(6,182,212,.10)';
+      badge.style.borderColor = 'rgba(6,182,212,.35)';
+      badge.style.color = 'var(--text)';
+      badge.style.display = 'flex';
+      badge.style.alignItems = 'center';
+      badge.style.justifyContent = 'center';
+      badge.style.fontWeight = '900';
+      badge.style.fontSize = '18px';
+      badge.textContent = 'FUELING';
+      right.appendChild(badge);
+
+      row.appendChild(ticket);
+      row.appendChild(info);
+      row.appendChild(right);
+      return row;
+    }
+
+    async function loadActive() {
+      const stationId = parseInt(elStationId.value || String(DEFAULT_STATION_ID), 10) || DEFAULT_STATION_ID;
+      elMeta.textContent = `Station: ${stationId} • ${nowStr()}`;
+
+      const url = `/api/queue/active?station_id=${encodeURIComponent(stationId)}`;
+
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+          setStatus(false, `HTTP ${res.status}`);
+          return;
+        }
+
+        const data = await res.json();
+
+        const called = Array.isArray(data.called) ? data.called : [];
+        const fueling = Array.isArray(data.fueling) ? data.fueling : [];
+
+        countCalled.textContent = String(called.length);
+        countFueling.textContent = String(fueling.length);
+
+        clearNode(calledList);
+        clearNode(fuelingList);
+
+        if (called.length === 0) {
+          const e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = 'Пусто';
+          calledList.appendChild(e);
+        } else {
+          for (const t of called) calledList.appendChild(renderCalledRow(t, stationId));
+        }
+
+        if (fueling.length === 0) {
+          const e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = 'Пусто';
+          fuelingList.appendChild(e);
+        } else {
+          for (const t of fueling) fuelingList.appendChild(renderFuelingRow(t));
+        }
+
+        setStatus(true, `OK • called=${called.length} • fueling=${fueling.length}`);
+      } catch (e) {
+        setStatus(false, `Error: ${e?.message || e}`);
+      }
+    }
+
+    btnRefresh.addEventListener('click', loadActive);
+    elStationId.addEventListener('change', loadActive);
+
+    loadActive();
+    setInterval(loadActive, REFRESH_MS);
+  </script>
+</body>
+</html>

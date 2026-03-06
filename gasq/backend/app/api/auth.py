@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import status
@@ -9,12 +9,14 @@ from app.db.session import get_db
 from app.models.user import User
 from app.core.security import hash_password, verify_password, create_access_token
 from app.api.deps import oauth2_scheme
+from app.main import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=dict)
-async def register(payload: dict, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, payload: dict, db: AsyncSession = Depends(get_db)):
     phone = str(payload.get("phone", "")).strip()
     password = str(payload.get("password", "")).strip()
     role = str(payload.get("role", "driver")).strip()
@@ -38,7 +40,8 @@ async def register(payload: dict, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=dict)
-async def login(payload: dict, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, payload: dict, db: AsyncSession = Depends(get_db)):
     phone = str(payload.get("phone", "")).strip()
     password = str(payload.get("password", "")).strip()
 

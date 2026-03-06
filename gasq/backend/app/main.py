@@ -31,8 +31,24 @@ app.add_middleware(
 )
 
 @app.get("/health", tags=["system"])
-def health_check():
-    return {"status": "ok", "service": "gasq-backend"}
+async def health_check():
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "service": "gasq-backend",
+            "database": "ok",
+        }
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": "gasq-backend",
+                "database": "unavailable",
+            },
+        )
 
 @app.get("/", tags=["system"])
 def root():

@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 import logging
 import sys
+import time
 from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
@@ -25,6 +26,21 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    process_time = round((time.time() - start_time) * 1000, 2)
+
+    logger.info(
+        f"{request.client.host} {request.method} {request.url.path} "
+        f"{response.status_code} {process_time}ms"
+    )
+
+    return response
 
 # CORS — берём из .env (CORS_ORIGINS)
 origins = settings.cors_origins_list()

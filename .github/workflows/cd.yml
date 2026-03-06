@@ -1,0 +1,29 @@
+name: GasQ CD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy-preview:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show deployment placeholder
+        run: |
+          echo "CD workflow is configured."
+          echo "Real server deploy will be added after SSH secrets are prepared."
+
+  build-check:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Backend Docker build
+        run: docker build -t gasq-backend:ci ./gasq/backend

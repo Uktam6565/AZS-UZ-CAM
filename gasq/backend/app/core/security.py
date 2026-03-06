@@ -14,8 +14,6 @@ def hash_password(password: str) -> str:
     pw = "" if password is None else str(password)
     pw = pw.strip()
 
-    # DEBUG (временно): покажем длину пароля в байтах
-    print(f"[hash_password] len_bytes={len(pw.encode('utf-8'))} repr={pw!r}")
 
     if len(pw.encode("utf-8")) > 72:
         raise ValueError("Password too long (>72 bytes)")

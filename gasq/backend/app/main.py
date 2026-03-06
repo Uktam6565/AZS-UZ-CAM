@@ -65,7 +65,7 @@ def root():
     return {"message": "GasQ API is running. Open /docs for Swagger UI."}
 
 # Подключаем все API роуты
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="/api/v1")
 
 # Глобальная обработка ошибок (чтобы не падало “молча”)
 @app.exception_handler(Exception)

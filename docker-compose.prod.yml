@@ -10,17 +10,27 @@ services:
       POSTGRES_PASSWORD: gasq
     volumes:
       - pg_data:/var/lib/postgresql/data
-
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gasq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   backend:
     build:
       context: ./gasq/backend
       dockerfile: Dockerfile
     container_name: gasq-backend-prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file:
       - ./gasq/backend/.env.production
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     expose:
       - "8000"
 
@@ -28,6 +38,11 @@ services:
     image: nginx:1.25-alpine
     container_name: gasq-nginx-prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "80:80"
     depends_on:

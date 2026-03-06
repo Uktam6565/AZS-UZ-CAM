@@ -5,8 +5,10 @@ class SmsService:
     """
 
     async def send(self, phone: str, message: str):
-        print("=== SMS MOCK ===")
-        print("TO:", phone)
-        print("MESSAGE:", message)
-        print("================")
-        return {"ok": True, "mock": True}
+        # временный mock SMS сервис (для разработки)
+        # в production будет интеграция с Eskiz
+        return {
+            "ok": True,
+            "mock": True,
+            "phone": phone,
+        }

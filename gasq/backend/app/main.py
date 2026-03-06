@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+import logging
+import sys
 from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
@@ -9,6 +11,14 @@ from app.api.router import api_router
 from app.db.engine import engine
 from app.db.base import Base
 from app.api.auth import router as auth_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+
+logger = logging.getLogger("gasq")
 
 app = FastAPI(
     title="GasQ - Queue & Station Management",
@@ -67,6 +77,8 @@ async def global_exception_handler(request, exc: Exception):
 
 @app.on_event("startup")
 async def on_startup():
+    logger.info("GasQ backend starting up")
+
     # Проверка БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

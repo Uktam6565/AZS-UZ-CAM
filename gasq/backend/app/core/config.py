@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # -----------------
     # JWT / Auth
     # -----------------
-    JWT_SECRET_KEY: str = "CHANGE_ME"
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
 

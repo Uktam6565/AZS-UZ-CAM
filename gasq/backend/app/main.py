@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 import logging
 import sys
 import time
+import json
 import os
 import sentry_sdk
 import uuid
@@ -78,10 +79,14 @@ async def log_requests(request: Request, call_next):
 
     response.headers["X-Request-ID"] = request_id
 
-    logger.info(
-        f"{request_id} {request.client.host} {method} {endpoint} "
-        f"{status} {round(process_time * 1000, 2)}ms"
-    )
+    logger.info(json.dumps({
+        "request_id": request_id,
+        "ip": request.client.host,
+        "method": method,
+        "endpoint": endpoint,
+        "status": status,
+        "latency_ms": round(process_time * 1000, 2)
+    }))
 
     return response
 

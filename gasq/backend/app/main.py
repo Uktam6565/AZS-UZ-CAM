@@ -4,6 +4,8 @@ import sys
 import time
 import os
 import sentry_sdk
+import uuid
+from contextvars import ContextVar
 from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
@@ -48,6 +50,8 @@ HTTP_LATENCY = Histogram(
     ["method", "endpoint"],
 )
 
+request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="-")
+
 app = FastAPI(
     title="GasQ - Queue & Station Management",
     version="0.1.0",
@@ -56,6 +60,9 @@ app = FastAPI(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request_id_ctx_var.set(request_id)
+
     start_time = time.time()
 
     response = await call_next(request)
@@ -69,8 +76,10 @@ async def log_requests(request: Request, call_next):
     HTTP_REQUESTS.labels(method=method, endpoint=endpoint, status=status).inc()
     HTTP_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)
 
+    response.headers["X-Request-ID"] = request_id
+
     logger.info(
-        f"{request.client.host} {method} {endpoint} "
+        f"{request_id} {request.client.host} {method} {endpoint} "
         f"{status} {round(process_time * 1000, 2)}ms"
     )
 

@@ -5,7 +5,8 @@ import time
 from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from app.core.lifespan import lifespan
 
 from app.api.router import api_router
@@ -79,6 +80,13 @@ async def health_check():
 @app.get("/", tags=["system"])
 def root():
     return {"message": "GasQ API is running. Open /docs for Swagger UI."}
+
+@app.get("/metrics", tags=["system"])
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 # Подключаем все API роуты
 app.include_router(api_router, prefix="/api/v1")

@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 import logging
 import sys
 import time
+import os
+import sentry_sdk
 from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
@@ -21,6 +23,17 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("gasq")
+
+# Sentry monitoring
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        traces_sample_rate=0.2,
+        environment=os.getenv("ENVIRONMENT", "production"),
+    )
+    logger.info("Sentry monitoring enabled")
 
 # Prometheus HTTP metrics
 HTTP_REQUESTS = Counter(

@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
 from app.core.lifespan import lifespan
 
 from app.api.router import api_router
@@ -22,6 +22,19 @@ logging.basicConfig(
 
 logger = logging.getLogger("gasq")
 
+# Prometheus HTTP metrics
+HTTP_REQUESTS = Counter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
+)
+
+HTTP_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency",
+    ["method", "endpoint"],
+)
+
 app = FastAPI(
     title="GasQ - Queue & Station Management",
     version="0.1.0",
@@ -34,11 +47,18 @@ async def log_requests(request: Request, call_next):
 
     response = await call_next(request)
 
-    process_time = round((time.time() - start_time) * 1000, 2)
+    process_time = time.time() - start_time
+
+    endpoint = request.url.path
+    method = request.method
+    status = response.status_code
+
+    HTTP_REQUESTS.labels(method=method, endpoint=endpoint, status=status).inc()
+    HTTP_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)
 
     logger.info(
-        f"{request.client.host} {request.method} {request.url.path} "
-        f"{response.status_code} {process_time}ms"
+        f"{request.client.host} {method} {endpoint} "
+        f"{status} {round(process_time * 1000, 2)}ms"
     )
 
     return response

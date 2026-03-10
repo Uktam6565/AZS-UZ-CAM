@@ -1,12 +1,94 @@
-\# GASQ BACKEND MAP
+\# GasQ Backend Map
 
 
 
-Quick architecture overview of the GasQ backend.
+\## Backend structure
 
 
 
-Purpose: understand the system in 20 seconds.
+gasq/backend/app
+
+
+
+core/
+
+\- config.py
+
+\- security.py
+
+\- lifespan.py
+
+\- realtime.py
+
+
+
+db/
+
+\- engine.py
+
+\- session.py
+
+\- base.py
+
+
+
+models/
+
+\- user.py
+
+\- station.py
+
+\- pump.py
+
+\- queue.py
+
+\- notification.py
+
+
+
+api/
+
+\- auth.py
+
+\- stations.py
+
+\- queue.py
+
+\- operator.py
+
+\- driver.py
+
+\- users.py
+
+\- admin.py
+
+\- reports.py
+
+
+
+api/routes/
+
+\- notifications.py
+
+
+
+services/
+
+\- eta.py
+
+\- notify.py
+
+\- sms.py
+
+\- push\_fcm.py
+
+\- no\_show\_loop.py
+
+
+
+main.py
+
+router.py
 
 
 
@@ -14,77 +96,43 @@ Purpose: understand the system in 20 seconds.
 
 
 
-\# SYSTEM FLOW
+\## Main API
 
 
 
-Driver / Operator / Station Screen
+Auth
 
-&nbsp;       │
+/api/v1/auth/register
 
-&nbsp;       │ REST API
-
-&nbsp;       ▼
-
-FastAPI Backend
-
-&nbsp;       │
-
-&nbsp;       ├ Queue Engine
-
-&nbsp;       ├ Pump Control
-
-&nbsp;       ├ Notification System
-
-&nbsp;       ├ ETA Service
-
-&nbsp;       ├ Audit Logging
-
-&nbsp;       └ Realtime Engine
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-PostgreSQL Database
+/api/v1/auth/login
 
 
 
----
+Queue
+
+/api/v1/queue/join
+
+/api/v1/queue/panel
+
+/api/v1/queue/call-next
 
 
 
-\# BACKEND MODULES
+Operator
+
+/api/v1/operator/call\_next
 
 
 
-API Layer
+Driver
+
+/api/v1/driver/ticket
 
 
 
-auth
+Stations
 
-queue
-
-stations
-
-pumps
-
-reservations
-
-ratings
-
-reports
-
-users
-
-operator
-
-driver
-
-checkin
-
-ws\_queue
+/api/v1/stations
 
 
 
@@ -92,155 +140,25 @@ ws\_queue
 
 
 
-\# CORE MODULES
+\## Realtime
 
 
 
-config
+WebSocket queue updates
 
-security
 
-lifespan
 
-deps
-
-realtime
-
-
-
----
-
-
-
-\# DATABASE MODELS
-
-
-
-QueueTicket
-
-Station
-
-Pump
-
-User
-
-Notification
-
-Reservation
-
-Rating
-
-AuditLog
-
-
-
----
-
-
-
-\# SERVICES
-
-
-
-eta
-
-notify
-
-sms
-
-push\_fcm
-
-audit
-
-no\_show\_loop
-
-
-
----
-
-
-
-\# QUEUE WORKFLOW
-
-
-
-Driver joins queue
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-waiting
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-Operator calls driver
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-called
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-fueling
-
-&nbsp;       │
-
-&nbsp;       ▼
-
-done
-
-
-
-Exceptions
-
-
-
-cancelled
-
-no-show
-
-
-
----
-
-
-
-\# REALTIME SYSTEM
-
-
-
-WebSocket endpoint
-
-
+ws endpoints:
 
 /ws/queue/{station\_id}
 
 
 
-Realtime events
+Broadcast events:
 
+\- ticket\_called
 
-
-ticket\_called
-
-ticket\_joined
-
-ticket\_fueling
-
-ticket\_done
-
-ticket\_cancelled
-
-driver\_heading
-
-driver\_arrived
+\- queue\_updated
 
 
 
@@ -248,31 +166,31 @@ driver\_arrived
 
 
 
-\# MONITORING
+\## Monitoring
 
 
 
-Prometheus metrics
-
-
-
-/metrics
-
-
-
-Health endpoint
+Endpoints:
 
 
 
 /health
 
+/metrics
+
+
+
+Prometheus metrics enabled.
+
 
 
 ---
 
 
 
-END OF FILE
+\## Current Focus
 
-GasQ Backend Map
+
+
+Fix queue panel state after call-next.
 

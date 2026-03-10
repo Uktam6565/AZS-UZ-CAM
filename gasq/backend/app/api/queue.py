@@ -8,6 +8,7 @@ from math import ceil
 from app.services.eta import calc_eta_for_ticket
 from app.models.notification import Notification
 from sqlalchemy.exc import IntegrityError
+from app.services.queue_realtime import publish_station_event
 
 import secrets
 
@@ -199,56 +200,56 @@ async def join_queue(
     # ----------------------------
 
         # >>> v13: анти-спам join (cooldown)
-        cooldown = int(getattr(settings, "JOIN_COOLDOWN_SECONDS", 0) or 0)
+    cooldown = int(getattr(settings, "JOIN_COOLDOWN_SECONDS", 0) or 0)
 
-        if cooldown > 0:
-            now = datetime.utcnow()
+    if cooldown > 0:
+        now = datetime.utcnow()
 
-            # если есть user_id — проверяем по нему
-            if driver_user_id is not None:
-                stmt_last = (
-                    select(QueueTicket)
-                    .where(
-                        QueueTicket.station_id == station_id,
-                        QueueTicket.driver_user_id == driver_user_id,
-                    )
-                    .order_by(QueueTicket.id.desc())
-                    .limit(1)
+        # если есть user_id — проверяем по нему
+        if driver_user_id is not None:
+            stmt_last = (
+                select(QueueTicket)
+                .where(
+                    QueueTicket.station_id == station_id,
+                    QueueTicket.driver_user_id == driver_user_id,
                 )
-                res_last = await db.execute(stmt_last)
-                last = res_last.scalars().first()
+                .order_by(QueueTicket.id.desc())
+                .limit(1)
+            )
+            res_last = await db.execute(stmt_last)
+            last = res_last.scalars().first()
 
-                if last:
-                    last_dt = getattr(last, "created_at", None) or now
-                    age_sec = int((now - last_dt).total_seconds())
-                    if age_sec < cooldown:
-                        raise HTTPException(
-                            status_code=429,
-                            detail=f"Too many requests. Try again in {cooldown - age_sec}s",
-                        )
-
-            # если user_id нет, но есть телефон — проверяем по телефону
-            elif driver_phone:
-                stmt_last = (
-                    select(QueueTicket)
-                    .where(
-                        QueueTicket.station_id == station_id,
-                        QueueTicket.driver_phone == driver_phone,
+            if last:
+                last_dt = getattr(last, "created_at", None) or now
+                age_sec = int((now - last_dt).total_seconds())
+                if age_sec < cooldown:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Too many requests. Try again in {cooldown - age_sec}s",
                     )
-                    .order_by(QueueTicket.id.desc())
-                    .limit(1)
-                )
-                res_last = await db.execute(stmt_last)
-                last = res_last.scalars().first()
 
-                if last:
-                    last_dt = getattr(last, "created_at", None) or now
-                    age_sec = int((now - last_dt).total_seconds())
-                    if age_sec < cooldown:
-                        raise HTTPException(
-                            status_code=429,
-                            detail=f"Too many requests. Try again in {cooldown - age_sec}s",
-                        )
+        # если user_id нет, но есть телефон — проверяем по телефону
+        elif driver_phone:
+            stmt_last = (
+                select(QueueTicket)
+                .where(
+                    QueueTicket.station_id == station_id,
+                    QueueTicket.driver_phone == driver_phone,
+                )
+                .order_by(QueueTicket.id.desc())
+                .limit(1)
+            )
+            res_last = await db.execute(stmt_last)
+            last = res_last.scalars().first()
+
+            if last:
+                last_dt = getattr(last, "created_at", None) or now
+                age_sec = int((now - last_dt).total_seconds())
+                if age_sec < cooldown:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Too many requests. Try again in {cooldown - age_sec}s",
+                    )
     # <<< v13
 
     # генерим номер талона
@@ -273,6 +274,20 @@ async def join_queue(
     try:
         await db.flush()
         await db.commit()
+        await db.refresh(t)
+
+        await publish_station_event(
+            db,
+            event="queue.joined",
+            station_id=t.station_id,
+            ticket=t,
+            payload={
+                "ticket_no": t.ticket_no,
+                "status": t.status,
+                "fuel_type": t.fuel_type,
+            },
+        )
+
     except IntegrityError:
         # Если одновременно прилетели два join — база могла зарубить уникальность
         await db.rollback()
@@ -345,20 +360,37 @@ async def join_queue(
         db.add(t)
         await db.flush()
         await db.commit()
+        await db.refresh(t)
+
+        await publish_station_event(
+            db,
+            event="queue.joined",
+            station_id=t.station_id,
+            ticket=t,
+            payload={
+                "ticket_no": t.ticket_no,
+                "status": t.status,
+                "fuel_type": t.fuel_type,
+            },
+        )
 
     # audit (join может быть без авторизации — user=None ок)
-    try:
-        await audit(
-            db=db,
-            request=request,
-            user=None,
-            action="queue.join",
-            station_id=station_id,
-            ticket_id=ticket_id,
-            meta={"ticket_no": ticket_no_out, "fuel_type": fuel_type, "source": source_out},
-        )
-    except Exception:
-        pass
+        try:
+            await audit(
+                db=db,
+                request=request,
+                user=None,
+                action="queue.join",
+                station_id=station_id,
+                ticket_id=t.id,
+                meta={
+                    "ticket_no": t.ticket_no,
+                    "fuel_type": fuel_type,
+                    "source": t.source,
+                },
+            )
+        except Exception:
+            pass
 
     return {
         "ok": True,
@@ -480,42 +512,52 @@ async def panel(
 
         }
 
+def _is_no_show_expired(ticket: QueueTicket, now: datetime) -> bool:
+    no_show_minutes = int(getattr(settings, "NO_SHOW_MINUTES", 0) or 0)
+    if no_show_minutes <= 0:
+        return False
+
+    if ticket.status != "called":
+        return False
+
+    called_at = getattr(ticket, "called_at", None)
+    if called_at is None:
+        return False
+
+    if getattr(ticket, "check_in_at", None) is not None:
+        return False
+
+    deadline = called_at + timedelta(minutes=no_show_minutes)
+    return now >= deadline
+
 async def auto_no_show_cleanup(station_id: int, db: AsyncSession) -> int:
     """
-    Автоматически отменяет талоны, которые были вызваны (called),
-    но водитель не начал обслуживание слишком долго.
-    Возвращает сколько талонов отменили.
-
-    Правило:
-      - отменяем только если status == "called"
-      - called_at есть и достаточно старый
-      - check_in_at == None (если водитель уже check-in — НЕ отменяем)
+    Автоматически отменяет только действительно просроченные called-талоны.
+    Вся логика no-show централизована в _is_no_show_expired().
     """
     now = datetime.utcnow()
-    threshold = now - timedelta(minutes=int(settings.NO_SHOW_MINUTES))
 
     stmt = select(QueueTicket).where(
         QueueTicket.station_id == station_id,
         QueueTicket.status == "called",
-        QueueTicket.called_at.is_not(None),
-        QueueTicket.called_at < threshold,
-        QueueTicket.check_in_at.is_(None),   # ключевая защита
     )
 
     res = await db.execute(stmt)
     tickets = res.scalars().all()
 
+    cancelled = 0
+
     for t in tickets:
+        if not _is_no_show_expired(t, now):
+            continue
+
         freed_pump = getattr(t, "pump_no", None)
 
-        # отменяем
         t.status = "cancelled"
         if hasattr(t, "cancel_reason"):
             t.cancel_reason = "no_show"
         if hasattr(t, "cancelled_at"):
             t.cancelled_at = now
-
-        # освобождаем колонку
         if hasattr(t, "pump_no"):
             t.pump_no = None
 
@@ -531,8 +573,9 @@ async def auto_no_show_cleanup(station_id: int, db: AsyncSession) -> int:
             )
         )
 
-    # ВАЖНО: commit НЕ здесь (его делает no_show_loop)
-    return len(tickets)
+        cancelled += 1
+
+    return cancelled
 
 @router.post("/call-next", response_model=dict)
 async def call_next_ticket(
@@ -601,6 +644,19 @@ async def call_next_ticket(
 
     await db.commit()
     await db.refresh(t)
+
+    await publish_station_event(
+        db,
+        event="queue.called",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "pump_no": t.pump_no,
+            "status": t.status,
+            "called_at": t.called_at.isoformat() if t.called_at else None,
+        },
+    )
 
     return {
         "ok": True,
@@ -681,6 +737,18 @@ async def start_fueling(
     await db.commit()
     await db.refresh(t)
 
+    await publish_station_event(
+        db,
+        event="queue.fueling_started",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "pump_no": t.pump_no,
+        },
+    )
+
     return {
         "ok": True,
         "ticket_id": t.id,
@@ -724,6 +792,19 @@ async def finish_ticket(
 
     await db.commit()
     await db.refresh(t)
+
+    await publish_station_event(
+        db,
+        event="queue.done",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "done_at": t.done_at.isoformat() if t.done_at else None,
+            "released_pump": released_pump,
+        },
+    )
 
     return {
         "ok": True,
@@ -770,6 +851,19 @@ async def recall_ticket(
     await db.commit()
     await db.refresh(t)
 
+    await publish_station_event(
+        db,
+        event="queue.recalled",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "pump_no": t.pump_no,
+            "called_at": t.called_at.isoformat() if t.called_at else None,
+        },
+    )
+
     return {
         "ok": True,
         "ticket_id": t.id,
@@ -795,17 +889,15 @@ async def check_in(
     if not ticket_no or not claim_code or not station_id:
         raise HTTPException(status_code=400, detail="Invalid payload")
 
-    q = await db.execute(
-        QueueTicket.__table__.select().where(
+        q = await db.execute(
+        select(QueueTicket).where(
             QueueTicket.ticket_no == ticket_no,
             QueueTicket.station_id == station_id,
         )
     )
-    ticket = q.first()
+    ticket = q.scalars().first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-
-    ticket = ticket[0]
 
     if (ticket.claim_code or "").upper() != claim_code.upper():
         raise HTTPException(status_code=403, detail="Invalid claim_code")
@@ -813,6 +905,17 @@ async def check_in(
     ticket.status = "called"
     await db.commit()
     await db.refresh(ticket)
+
+    await publish_station_event(
+        db,
+        event="queue.check_in",
+        station_id=ticket.station_id,
+        ticket=ticket,
+        payload={
+            "ticket_no": ticket.ticket_no,
+            "status": ticket.status,
+        },
+    )
 
     return {"ticket_no": ticket.ticket_no, "status": ticket.status}
 
@@ -866,6 +969,20 @@ async def set_ticket_status(
     status_out = t.status
 
     await db.commit()
+
+    await db.refresh(t)
+
+    await publish_station_event(
+        db,
+        event="queue.status_changed",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "old_status": old_status,
+            "status": t.status,
+        },
+    )
 
     # audit — один, правильный, async-safe
     try:
@@ -957,7 +1074,7 @@ async def last_called(
 
 
 @router.post("/finish", response_model=dict)
-async def finish_ticket(
+async def finish_ticket_final(
     ticket_id: int = Query(..., description="ID талона"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("operator", "owner", "admin")),
@@ -973,7 +1090,6 @@ async def finish_ticket(
     t.status = "done"
     t.done_at = now
 
-    # освобождаем колонку
     finished_pump = t.pump_no
     t.pump_no = None
 
@@ -987,6 +1103,19 @@ async def finish_ticket(
 
     await db.commit()
     await db.refresh(t)
+
+    await publish_station_event(
+        db,
+        event="queue.finished",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "done_at": t.done_at.isoformat() if t.done_at else None,
+            "freed_pump_no": finished_pump,
+        },
+    )
 
     return {
         "ok": True,
@@ -1034,6 +1163,19 @@ async def cancel_ticket(
     await db.commit()
     await db.refresh(t)
 
+    await publish_station_event(
+        db,
+        event="queue.cancelled",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "reason": reason,
+            "freed_pump_no": old_pump,
+        },
+    )
+
     return {
         "ok": True,
         "ticket_id": t.id,
@@ -1070,8 +1212,15 @@ async def no_show(
     if getattr(t, "check_in_at", None) is not None:
         raise HTTPException(status_code=400, detail="Cannot no-show after check-in")
 
-    old_pump = getattr(t, "pump_no", None)
     now = datetime.utcnow()
+
+    if not _is_no_show_expired(t, now):
+        raise HTTPException(
+            status_code=400,
+            detail="Too early for no-show cancellation",
+        )
+
+    old_pump = getattr(t, "pump_no", None)
 
     t.status = "cancelled"
     if hasattr(t, "cancel_reason"):
@@ -1096,6 +1245,20 @@ async def no_show(
 
     await db.commit()
     await db.refresh(t)
+
+    await publish_station_event(
+        db,
+        event="queue.no_show",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "status": t.status,
+            "freed_pump_no": old_pump,
+            "cancel_reason": getattr(t, "cancel_reason", None),
+            "cancelled_at": getattr(t, "cancelled_at", None).isoformat() if getattr(t, "cancelled_at", None) else None,
+        },
+    )
 
     return {
         "ok": True,
@@ -1194,12 +1357,6 @@ async def set_driver_state(
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Водитель меняет состояние: idle / heading / arrived
-    payload:
-      - ticket_id: int
-      - state: "idle" | "heading" | "arrived"
-    """
     ticket_id = payload.get("ticket_id")
     state = (payload.get("state") or "").strip().lower()
 
@@ -1215,32 +1372,48 @@ async def set_driver_state(
 
     if state == "heading":
         t.heading_at = now
-
-        # Уведомление для операторской панели
-        note = Notification(
-            station_id=t.station_id,
-            ticket_id=t.id,
-            type="driver_heading",
-            message=f"Талон {t.ticket_no}: водитель подъезжает",
-            created_at=now,
+        db.add(
+            Notification(
+                station_id=t.station_id,
+                ticket_id=t.id,
+                type="driver_heading",
+                message=f"Талон {t.ticket_no}: водитель подъезжает",
+                created_at=now,
+            )
         )
-        db.add(note)
 
-    if state == "arrived":
+    elif state == "arrived":
         t.arrived_at = now
-
-        note = Notification(
-            station_id=t.station_id,
-            ticket_id=t.id,
-            type="driver_arrived",
-            message=f"Талон {t.ticket_no}: водитель прибыл",
-            created_at=now,
+        db.add(
+            Notification(
+                station_id=t.station_id,
+                ticket_id=t.id,
+                type="driver_arrived",
+                message=f"Талон {t.ticket_no}: водитель прибыл",
+                created_at=now,
+            )
         )
-        db.add(note)
 
     await db.commit()
+    await db.refresh(t)
 
-    return {"ok": True, "ticket_id": t.id, "ticket_no": t.ticket_no, "driver_state": t.driver_state}
+    await publish_station_event(
+        db,
+        event="queue.driver_state_changed",
+        station_id=t.station_id,
+        ticket=t,
+        payload={
+            "ticket_no": t.ticket_no,
+            "driver_state": t.driver_state,
+        },
+    )
+
+    return {
+        "ok": True,
+        "ticket_id": t.id,
+        "ticket_no": t.ticket_no,
+        "driver_state": t.driver_state,
+    }
 
 @router.get("/history", response_model=dict)
 async def history(

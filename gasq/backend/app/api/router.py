@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api import realtime
 
 from app.api.queue import router as queue_router
 from app.api.driver import router as driver_router
@@ -15,6 +16,7 @@ api_router.include_router(auth_router)
 api_router.include_router(stations_router, prefix="/stations")
 api_router.include_router(operator_router)
 api_router.include_router(checkin_router)
+api_router.include_router(realtime.router)
 
 # ✅ ВАЖНО: БЕЗ prefix="/queue"
 api_router.include_router(queue_router)

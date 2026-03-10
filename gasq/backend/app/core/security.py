@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from jose import JWTError, jwt
@@ -8,21 +8,22 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 def hash_password(password: str) -> str:
     pw = "" if password is None else str(password)
     pw = pw.strip()
-
-
-    if len(pw.encode("utf-8")) > 72:
-        raise ValueError("Password too long (>72 bytes)")
-
+    pw = pw[:72]
     return pwd_context.hash(pw)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
+    pw = "" if password is None else str(password)
+    pw = pw.strip()
+    pw = pw[:72]
+    return pwd_context.verify(pw, password_hash)
 
 
 def create_access_token(data: dict, expires_minutes: int | None = None) -> str:
@@ -33,12 +34,7 @@ def create_access_token(data: dict, expires_minutes: int | None = None) -> str:
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-
 def decode_access_token(token: str) -> Optional[str]:
-    """
-    Декодирование JWT токена.
-    Возвращает subject (user_id/email) или None.
-    """
     try:
         payload = jwt.decode(
             token,
@@ -49,10 +45,8 @@ def decode_access_token(token: str) -> Optional[str]:
     except JWTError:
         return None
 
+
 def decode_token_payload(token: str) -> Optional[Dict[str, Any]]:
-    """
-    Новый метод: возвращает весь payload токена (sub, role, exp...) или None
-    """
     try:
         payload = jwt.decode(
             token,

@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import select
 
 from app.db.engine import AsyncSessionLocal
-from app.models.station import Station
+from app.models import Station
 from app.api.queue import auto_no_show_cleanup
 
 logger = logging.getLogger("gasq")

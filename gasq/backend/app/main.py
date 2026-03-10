@@ -6,6 +6,7 @@ import json
 import os
 import sentry_sdk
 import uuid
+import app.models  # noqa: F401
 from contextvars import ContextVar
 from sqlalchemy import text
 from app.core.config import settings
@@ -13,8 +14,9 @@ from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
 from app.core.lifespan import lifespan
-
+from app.core.limiter import limiter
 from app.api.router import api_router
+from app.api.ws_queue import router as ws_queue_router
 from app.db.engine import engine
 from app.db.base import Base
 from app.api.auth import router as auth_router
@@ -58,6 +60,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.include_router(ws_queue_router)
+app.include_router(api_router, prefix="/api/v1")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

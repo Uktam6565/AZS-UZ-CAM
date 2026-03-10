@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>GasQ WebSocket Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, button { margin: 4px 0; padding: 8px; width: 100%; max-width: 700px; }
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 12px;
+      min-height: 300px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+  <h2>GasQ WebSocket Test</h2>
+
+  <label>WebSocket URL</label>
+  <input id="wsUrl" value="ws://127.0.0.1:8000/api/v1/realtime/queue/station/1" />
+
+  <button onclick="connectWs()">Connect</button>
+  <button onclick="disconnectWs()">Disconnect</button>
+  <button onclick="clearLog()">Clear</button>
+
+  <h3>Log</h3>
+  <pre id="log"></pre>
+
+  <script>
+    let ws = null;
+    const logEl = document.getElementById("log");
+
+    function log(msg) {
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.textContent += line + "\n";
+      console.log(line);
+    }
+
+    function connectWs() {
+      const url = document.getElementById("wsUrl").value.trim();
+      if (!url) {
+        log("URL is empty");
+        return;
+      }
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        log("Already connected");
+        return;
+      }
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => log("CONNECTED");
+      ws.onmessage = (event) => log("MESSAGE: " + event.data);
+      ws.onerror = (event) => log("ERROR: see browser console");
+      ws.onclose = () => log("CLOSED");
+    }
+
+    function disconnectWs() {
+      if (ws) {
+        ws.close();
+      }
+    }
+
+    function clearLog() {
+      logEl.textContent = "";
+    }
+  </script>
+</body>
+</html>

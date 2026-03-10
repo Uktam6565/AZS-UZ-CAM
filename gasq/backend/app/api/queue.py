@@ -481,9 +481,14 @@ async def panel(
         )
 
     # 3) Stats
+    panel_statuses = ["waiting", "called", "fueling"]
+
     stmt_stats = (
         select(QueueTicket.status, func.count())
-        .where(QueueTicket.station_id == station_id)
+        .where(
+            QueueTicket.station_id == station_id,
+            QueueTicket.status.in_(panel_statuses),
+        )
         .group_by(QueueTicket.status)
     )
     res_stats = await db.execute(stmt_stats)
@@ -889,7 +894,7 @@ async def check_in(
     if not ticket_no or not claim_code or not station_id:
         raise HTTPException(status_code=400, detail="Invalid payload")
 
-        q = await db.execute(
+    q = await db.execute(
         select(QueueTicket).where(
             QueueTicket.ticket_no == ticket_no,
             QueueTicket.station_id == station_id,
@@ -902,7 +907,15 @@ async def check_in(
     if (ticket.claim_code or "").upper() != claim_code.upper():
         raise HTTPException(status_code=403, detail="Invalid claim_code")
 
-    ticket.status = "called"
+    if ticket.status != "called":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot check-in from status={ticket.status}",
+        )
+
+    now = datetime.utcnow()
+    ticket.check_in_at = now
+
     await db.commit()
     await db.refresh(ticket)
 
@@ -914,10 +927,18 @@ async def check_in(
         payload={
             "ticket_no": ticket.ticket_no,
             "status": ticket.status,
+            "check_in_at": ticket.check_in_at.isoformat() if ticket.check_in_at else None,
         },
     )
 
-    return {"ticket_no": ticket.ticket_no, "status": ticket.status}
+    return {
+        "ok": True,
+        "ticket_id": ticket.id,
+        "ticket_no": ticket.ticket_no,
+        "status": ticket.status,
+        "pump_no": ticket.pump_no,
+        "check_in_at": ticket.check_in_at.isoformat() if ticket.check_in_at else None,
+    }
 
 @router.post("/set-status", response_model=dict)
 async def set_ticket_status(
